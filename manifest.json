@@ -1,0 +1,10 @@
+{
+    "display_name": "Streameryze",
+    "loading_order": 5,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "author": "ZapoVerde",
+    "version": "0.1.0",
+    "auto_update": false
+}
