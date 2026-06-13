@@ -66,31 +66,155 @@ function runQueued(taskFns, concurrency = 1) {
     });
 }
 
-function interpolate(template, vars) {
-    return template.replace(/\{\{([\w-]+)\}\}/g, (_, key) => vars[key] ?? '');
+// ruleVars holds values produced by prior actions in the same rule execution.
+// System vars (second argument) always take precedence over rule-produced vars.
+// ---------------------------------------------------------------------------
+// Template condition evaluator — used by {{#if}} blocks in compose variable
+// Ported and extended from Personalyze/logic/computationalParser.js
+// ---------------------------------------------------------------------------
+
+function _evalAtomicCond(varName, op, rhs, lookup) {
+    const raw  = lookup(varName);
+    const val  = String(raw ?? '').trim();
+    const valL = val.toLowerCase();
+    const r    = (rhs ?? '').trim();
+    const esc  = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    switch (op.toLowerCase()) {
+        case 'matches':  { try { return new RegExp(r, 'i').test(val); } catch { return false; } }
+        case 'contains': return valL.includes(r.toLowerCase());
+        case 'is':       return new RegExp(`^\\b${esc(r.toLowerCase())}\\b$`, 'i').test(valL);
+        case 'in': {
+            const items = r.replace(/^\(|\)$/g, '').split(',').map(s => s.trim()).filter(Boolean);
+            return items.some(item => new RegExp(`^\\b${esc(item)}\\b$`, 'i').test(valL));
+        }
+        case 'empty':    return !raw || valL === '' || valL === 'none' || valL === 'unspecified';
+        default:         return false;
+    }
 }
+
+// Reduces a string of true/false/AND/OR/!/() tokens to a boolean.
+// Operator precedence: ! > AND > OR. Parentheses override.
+function _boolAlgebra(str) {
+    str = str.trim();
+    while (str.includes('(')) {
+        const prev = str;
+        str = str.replace(/\(([^()]+)\)/g, (_, g) => _boolAlgebra(g) ? 'true' : 'false');
+        if (str === prev) break;
+    }
+    while (/!\s*(true|false)\b/i.test(str))
+        str = str.replace(/!\s*true\b/gi, 'false').replace(/!\s*false\b/gi, 'true');
+    while (/\b(true|false)\s+AND\s+(true|false)\b/i.test(str))
+        str = str.replace(/\b(true|false)\s+AND\s+(true|false)\b/gi,
+            (_, l, r) => l.toLowerCase() === 'true' && r.toLowerCase() === 'true' ? 'true' : 'false');
+    while (/\b(true|false)\s+OR\s+(true|false)\b/i.test(str))
+        str = str.replace(/\b(true|false)\s+OR\s+(true|false)\b/gi,
+            (_, l, r) => l.toLowerCase() === 'true' || r.toLowerCase() === 'true' ? 'true' : 'false');
+    return str.toLowerCase().trim() === 'true';
+}
+
+const _VNAME = '[a-zA-Z0-9_-]+';
+
+function _evalCondition(cond, lookup) {
+    let e = cond;
+    // empty (no rhs)
+    e = e.replace(new RegExp(`(${_VNAME})\\s+empty\\b`, 'gi'),
+        (_, v) => _evalAtomicCond(v, 'empty', null, lookup) ? 'true' : 'false');
+    // in (list)
+    e = e.replace(new RegExp(`(${_VNAME})\\s+in\\s+\\(([^)]+)\\)`, 'gi'),
+        (_, v, list) => _evalAtomicCond(v, 'in', list, lookup) ? 'true' : 'false');
+    // matches / contains / is "rhs"
+    e = e.replace(new RegExp(`(${_VNAME})\\s+(matches|contains|is)\\s+"([^"]*)"`, 'gi'),
+        (_, v, op, rhs) => _evalAtomicCond(v, op, rhs, lookup) ? 'true' : 'false');
+    try { return _boolAlgebra(e); } catch { return false; }
+}
+
+function interpolate(template, vars, ruleVars = {}) {
+    const lookup = (name) => vars[name] ?? ruleVars[name] ?? '';
+
+    // {{#if condition}}body{{/if}}
+    // Condition uses bare variable names (no {{}}). Body may contain {{varName}} tokens.
+    let out = template.replace(
+        /\{\{#if\s+([\s\S]*?)\}\}([\s\S]*?)\{\{\/if\}\}/g,
+        (_, cond, body) => _evalCondition(cond, lookup) ? body : '',
+    );
+
+    // {{varName}} — simple substitution
+    return out.replace(/\{\{([^{}]+)\}\}/g, (_, key) => lookup(key.trim()));
+}
+
+/**
+ * Builds the click-to-inject variable chip legend shown above prompt inputs.
+ * System vars (gray) are always available. Rule-produced vars (amber) come from
+ * prior actions in the same rule that have config.outputVar set.
+ * ACTION_REGISTRY is referenced by name — safe because this is only called after
+ * the module has fully initialised (from within renderConfig handlers).
+ */
+function renderVarLegend(priorActions) {
+    const sys = [
+        { n: 'keyword',   h: 'matched keyword' },
+        { n: 'up-to',     h: 'text before keyword' },
+        { n: 'message',   h: 'full message (postMessage)' },
+        { n: 'paragraph', h: 'paragraph containing keyword' },
+        { n: 'history',   h: 'chat history' },
+        { n: 'char',      h: 'character name' },
+        { n: 'user',      h: 'user name' },
+    ];
+    const rule = (priorActions ?? [])
+        .filter(a => a.config?.outputVar)
+        .map(a => ({ n: a.config.outputVar, h: `from ${ACTION_REGISTRY[a.type]?.label ?? a.type}` }));
+    const chip = (v, cls) =>
+        `<span class="smz-var-chip ${cls} smz-var-inject" data-token="{{${esc(v.n)}}}" title="${esc(v.h)}">{{${esc(v.n)}}}</span>`;
+    return `<div class="smz-var-legend">${
+        sys.map(v => chip(v, 'smz-var-chip-sys')).join('')
+    }${rule.length ? `<span class="smz-var-legend-sep"></span>${rule.map(v => chip(v, 'smz-var-chip-rule')).join('')}` : ''}</div>`;
+}
+
+// Count of active background LLM dispatches. When non-zero, engine.onGenerationStarted
+// must not clear Streameryze's per-generation state — the GENERATION_STARTED event it
+// sees is from a quiet/background call, not a real new generation.
+let _activeDispatches = 0;
+export function isDispatchActive() { return _activeDispatches > 0; }
 
 /**
  * Dispatches a prompt to an LLM.
  * Tries the Connection Manager profile first (if profileId set), then falls back
  * to the main ST chat LLM via generateQuietPrompt.
  */
-async function dispatch(prompt, profileId) {
-    let result = null;
+async function dispatch(prompt, profileId, debug = false) {
+    _activeDispatches++;
+    const tStart = performance.now();
+    if (debug) console.log('[SMZ:dev] >>> LLM prompt:\n' + prompt);
+    try {
+        let result = null;
 
-    if (profileId) {
-        try {
-            result = await ConnectionManagerRequestService.sendRequest(profileId, prompt, null);
-        } catch (err) {
-            console.warn('[streameryze] sideCall: ConnectionManager failed, falling back to main LLM', err);
+        if (profileId) {
+            try {
+                result = await ConnectionManagerRequestService.sendRequest(profileId, prompt, null);
+            } catch (err) {
+                console.warn('[streameryze] sideCall: ConnectionManager failed, falling back to main LLM', err);
+            }
         }
-    }
 
-    if (result === null) {
-        result = await generateQuietPrompt({ quietPrompt: prompt, removeReasoning: true });
-    }
+        if (result === null) {
+            result = await generateQuietPrompt({ quietPrompt: prompt, removeReasoning: true });
+        }
 
-    return String(result?.content ?? result ?? '').trim();
+        const text = String(result?.content ?? result ?? '').trim();
+        if (debug) console.log(`[SMZ:dev] <<< LLM result (${Math.round(performance.now() - tStart)}ms):\n` + text);
+        return text;
+    } finally {
+        _activeDispatches--;
+    }
+}
+
+// Wraps dispatch() with Loggeryze waterfall timing for prefetch calls that fire
+// during streaming. time/timeEnd are no-ops outside an active turn, so this is
+// safe to call unconditionally — but only meaningful when a turn is live.
+function prefetchDispatch(prompt, profileId) {
+    window.loggeryze?.time('Streameryze: sideCall [non-blocking]');
+    return dispatch(prompt, profileId)
+        .then(r  => { window.loggeryze?.timeEnd('Streameryze: sideCall [non-blocking]'); return r; })
+        .catch(() => { window.loggeryze?.timeEnd('Streameryze: sideCall [non-blocking]'); return null; });
 }
 
 // ---------------------------------------------------------------------------
@@ -184,14 +308,14 @@ export function prefetchSideCall(key, config, matchedKeyword, streamText, stCtx,
             upTo = streamText.slice(0, firstMatch.index);
             if (mode === 'replaceParagraph') para = extractParagraph(streamText, firstMatch.index).text;
         }
-        _prefetchCache.set(key, [dispatch(mkPrompt(para, upTo), config.profileId ?? null).catch(() => null)]);
+        _prefetchCache.set(key, [prefetchDispatch(mkPrompt(para, upTo), config.profileId ?? null)]);
     } else if (mode === 'replaceParagraph') {
         const paragraphs = collectUniqueParagraphs(streamText, mkRe());
         const existing   = _prefetchCache.get(key) ?? [];
         while (existing.length < paragraphs.length) {
             const p    = paragraphs[existing.length];
             const upTo = streamText.slice(0, p.start);
-            existing.push(dispatch(mkPrompt(p.text, upTo), config.profileId ?? null).catch(() => null));
+            existing.push(prefetchDispatch(mkPrompt(p.text, upTo), config.profileId ?? null));
         }
         _prefetchCache.set(key, existing);
     } else {
@@ -201,7 +325,7 @@ export function prefetchSideCall(key, config, matchedKeyword, streamText, stCtx,
         while (existing.length < matches.length) {
             const m    = matches[existing.length];
             const upTo = streamText.slice(0, m.index);
-            existing.push(dispatch(mkPrompt('', upTo), config.profileId ?? null).catch(() => null));
+            existing.push(prefetchDispatch(mkPrompt('', upTo), config.profileId ?? null));
         }
         _prefetchCache.set(key, existing);
     }
@@ -255,12 +379,12 @@ export const ACTION_REGISTRY = {
         label: 'replace',
         stage: 'postMessage',
         defaultConfig: { replacement: '' },
-        async execute(config, { matchedKeyword, messageId, stCtx }) {
+        async execute(config, { matchedKeyword, messageId, stCtx, vars }) {
             const msg = stCtx?.chat?.[messageId];
             if (!msg) return;
-            // Case-insensitive replace: split on a regex so it matches regardless of case
-            const re      = new RegExp(matchedKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-            const updated = msg.mes.replace(re, config.replacement ?? '');
+            const re          = new RegExp(matchedKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+            const replacement = interpolate(config.replacement ?? '', { keyword: matchedKeyword }, vars ?? {});
+            const updated     = msg.mes.replace(re, replacement);
             if (updated === msg.mes) return;
             msg.mes = updated;
             try {
@@ -271,18 +395,30 @@ export const ACTION_REGISTRY = {
                 console.error('[streameryze] replace: render/save failed', err);
             }
         },
-        renderConfig($el, config, onChange) {
-            $el.html(`<input type="text" class="text_pole smz-cfg" placeholder="replacement — blank to delete" value="${esc(config.replacement)}" />`);
-            $el.find('input').on('input', function () { onChange({ ...config, replacement: this.value }); });
+        renderConfig($el, config, onChange, ctx) {
+            $el.html(`${renderVarLegend(ctx?.priorActions)}
+<input type="text" class="text_pole smz-cfg smz-replace-input" placeholder="replacement — blank to delete. Use {{varName}} to inject a step result." value="${esc(config.replacement)}" />`);
+            $el.find('.smz-replace-input').on('input', function () { onChange({ ...config, replacement: this.value }); });
+            $el.on('click', '.smz-var-inject', function () {
+                const token = $(this).data('token');
+                const $inp  = $el.find('.smz-replace-input');
+                const el    = $inp[0];
+                if (!el) return;
+                const s = el.selectionStart ?? el.value.length, e = el.selectionEnd ?? s;
+                el.value = el.value.slice(0, s) + token + el.value.slice(e);
+                el.selectionStart = el.selectionEnd = s + token.length;
+                $inp.trigger('input');
+                el.focus();
+            });
         },
     },
 
     sideCall: {
         label: 'call LLM',
         stage: 'postMessage',
-        defaultConfig: { prompt: '', profileId: null, outputMode: 'replaceKeyword', callMode: 'once', historyTurns: 0 },
+        defaultConfig: { prompt: '', profileId: null, outputMode: 'replaceKeyword', callMode: 'once', historyTurns: 0, outputVar: '' },
 
-        async execute(config, { matchedKeyword, messageId, stCtx, ruleId, actionIdx, isCurrentGeneration }) {
+        async execute(config, { matchedKeyword, messageId, stCtx, ruleId, actionIdx, isCurrentGeneration, vars, debug }) {
             const msg         = stCtx?.chat?.[messageId];
             const charName    = name2 ?? '';
             const userName    = name1 ?? '';
@@ -301,7 +437,7 @@ export const ACTION_REGISTRY = {
                 'up-to':   upTo,
                 char:      charName,
                 user:      userName,
-            });
+            }, vars ?? {});
 
             if (!mkPrompt().trim()) return;
 
@@ -323,7 +459,7 @@ export const ACTION_REGISTRY = {
                     const nc     = Math.min(cached.length, n);
                     const [pre, fresh] = await Promise.all([
                         Promise.all(cached.slice(0, nc)),
-                        runQueued(paragraphs.slice(nc).map(p => () => dispatch(mkPrompt(p.text, msg.mes.slice(0, p.start)), config.profileId ?? null))),
+                        runQueued(paragraphs.slice(nc).map(p => () => dispatch(mkPrompt(p.text, msg.mes.slice(0, p.start)), config.profileId ?? null, debug))),
                     ]);
                     if (isCurrentGeneration && !isCurrentGeneration()) return;
                     const results = [...pre, ...fresh];
@@ -341,7 +477,7 @@ export const ACTION_REGISTRY = {
                     const cached = getPrefetchedResults(cacheKey);
                     let text;
                     try {
-                        text = cached?.length ? await cached[0] : await dispatch(mkPrompt(p.text, upTo), config.profileId ?? null);
+                        text = cached?.length ? await cached[0] : await dispatch(mkPrompt(p.text, upTo), config.profileId ?? null, debug);
                     } catch (err) { console.error('[streameryze] sideCall replaceParagraph: dispatch failed', err); return; }
                     if (!text || (isCurrentGeneration && !isCurrentGeneration())) return;
                     msg.mes = msg.mes.slice(0, p.start) + text + msg.mes.slice(p.end);
@@ -359,7 +495,7 @@ export const ACTION_REGISTRY = {
                 const nc     = Math.min(cached.length, matches.length);
                 const [pre, fresh] = await Promise.all([
                     Promise.all(cached.slice(0, nc)),
-                    runQueued(matches.slice(nc).map(m => () => dispatch(mkPrompt('', msg.mes.slice(0, m.index)), config.profileId ?? null))),
+                    runQueued(matches.slice(nc).map(m => () => dispatch(mkPrompt('', msg.mes.slice(0, m.index)), config.profileId ?? null, debug))),
                 ]);
                 if (isCurrentGeneration && !isCurrentGeneration()) return;
                 const results = [...pre, ...fresh];
@@ -378,12 +514,16 @@ export const ACTION_REGISTRY = {
             const firstMatch = mkRe().exec(msg?.mes ?? '');
             const upTo       = firstMatch ? (msg?.mes ?? '').slice(0, firstMatch.index) : '';
             const cached     = getPrefetchedResults(cacheKey);
+            if (debug && cached?.length) console.log(`[SMZ:dev]   [${actionIdx}] sideCall using prefetch cache`);
             let text;
             try {
-                text = cached?.length ? await cached[0] : await dispatch(mkPrompt('', upTo), config.profileId ?? null);
+                text = cached?.length ? await cached[0] : await dispatch(mkPrompt('', upTo), config.profileId ?? null, debug);
             } catch (err) { console.error('[streameryze] sideCall: dispatch failed', err); return; }
+            if (debug && cached?.length) console.log(`[SMZ:dev]   [${actionIdx}] sideCall prefetch result:`, text);
 
-            if (!text || mode === 'silent' || (isCurrentGeneration && !isCurrentGeneration())) return;
+            if (!text || (isCurrentGeneration && !isCurrentGeneration())) return;
+            if (config.outputVar && vars) vars[config.outputVar] = text;
+            if (mode === 'silent') return;
 
             if (mode === 'replaceKeyword') {
                 if (!msg) return;
@@ -411,7 +551,7 @@ export const ACTION_REGISTRY = {
             }
         },
 
-        renderConfig($el, config, onChange) {
+        renderConfig($el, config, onChange, ctx) {
             let profileOpts = `<option value="">main ST chat LLM (default)</option>`;
             try {
                 for (const p of ConnectionManagerRequestService.getSupportedProfiles()) {
@@ -446,14 +586,18 @@ export const ACTION_REGISTRY = {
         </select>
     </div>
     <div class="smz-sc-row">
+        <label class="smz-sc-lbl">save as</label>
+        <input type="text" class="smz-cfg smz-sc-outvar" placeholder="variable name (optional)" value="${esc(config.outputVar ?? '')}" style="flex:1" />
+    </div>
+    <div class="smz-sc-row">
         <label class="smz-sc-lbl">history</label>
         <input type="number" class="smz-cfg smz-sc-history" min="0" max="20" step="1"
             value="${config.historyTurns ?? 0}" style="width:54px" />
         <small class="smz-sc-hint-inline">turns  —  use {{history}} in prompt</small>
     </div>
+    ${renderVarLegend(ctx?.priorActions)}
     <textarea class="text_pole smz-cfg smz-sc-prompt" rows="3"
         placeholder="Prompt — {{keyword}} {{up-to}} {{paragraph}} {{message}} {{history}} {{char}} {{user}}">${esc(config.prompt)}</textarea>
-    <small class="smz-hint">{{keyword}} {{up-to}} {{paragraph}} {{message}} {{history}} {{char}} {{user}}</small>
 </div>`);
 
             const update = () => onChange({
@@ -461,29 +605,106 @@ export const ACTION_REGISTRY = {
                 profileId:    $el.find('.smz-sc-profile').val() || null,
                 outputMode:   $el.find('.smz-sc-mode').val(),
                 callMode:     $el.find('.smz-sc-callmode').val(),
+                outputVar:    $el.find('.smz-sc-outvar').val().trim(),
                 historyTurns: parseInt($el.find('.smz-sc-history').val(), 10) || 0,
                 prompt:       $el.find('.smz-sc-prompt').val(),
             });
 
             $el.find('.smz-sc-profile, .smz-sc-mode, .smz-sc-callmode').on('change', update);
-            $el.find('.smz-sc-history').on('input', update);
+            $el.find('.smz-sc-history, .smz-sc-outvar').on('input', update);
             $el.find('.smz-sc-prompt').on('input', update);
+            $el.on('click', '.smz-var-inject', function () {
+                const token = $(this).data('token');
+                const $ta   = $el.find('.smz-sc-prompt');
+                const el    = $ta[0];
+                if (!el) return;
+                const s = el.selectionStart ?? el.value.length, e = el.selectionEnd ?? s;
+                el.value = el.value.slice(0, s) + token + el.value.slice(e);
+                el.selectionStart = el.selectionEnd = s + token.length;
+                $ta.trigger('input');
+                el.focus();
+            });
+        },
+    },
+
+    compose: {
+        label: 'compose variable',
+        stage: 'postMessage',
+        defaultConfig: { outputVar: '', template: '' },
+        async execute(config, { matchedKeyword, messageId, stCtx, vars, debug }) {
+            if (!config.outputVar || !vars) return;
+            const msg  = stCtx?.chat?.[messageId];
+            const text = msg?.mes ?? '';
+            const kwEsc     = (matchedKeyword ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const firstMatch = kwEsc ? new RegExp(kwEsc, 'i').exec(text) : null;
+            const upTo      = firstMatch ? text.slice(0, firstMatch.index) : '';
+            const result = interpolate(config.template ?? '', {
+                keyword: matchedKeyword ?? '',
+                message: text,
+                'up-to': upTo,
+                char:    name2 ?? '',
+                user:    name1 ?? '',
+            }, vars);
+            if (debug) console.log(`[SMZ:dev]   compose "${config.outputVar}" =`, result);
+            vars[config.outputVar] = result;
+        },
+        renderConfig($el, config, onChange, ctx) {
+            $el.html(`
+<div class="smz-sc-wrap">
+    <div class="smz-sc-row">
+        <label class="smz-sc-lbl">name</label>
+        <input type="text" class="smz-cfg smz-cv-name" placeholder="variable name" value="${esc(config.outputVar ?? '')}" style="flex:1" />
+    </div>
+    ${renderVarLegend(ctx?.priorActions)}
+    <textarea class="text_pole smz-cfg smz-cv-template" rows="3"
+        placeholder="{{#if keyword matches &quot;breath|hitch&quot;}}Forced Physical Reaction Cliché&#10;{{/if}}{{#if keyword is &quot;stone&quot;}}Purple Prose Metaphor&#10;{{/if}}">${esc(config.template ?? '')}</textarea>
+<div class="smz-kw-footer">
+    <span class="smz-help-toggle" title="Template language quick reference">?</span>
+</div>
+<div class="smz-help-text" style="display:none;">
+    <b>{{varName}}</b> — insert variable &nbsp;&nbsp; <b>{{#if condition}}…{{/if}}</b> — conditional block<br>
+    Condition operators: <span class="smz-help-eg">matches "regex"</span> &nbsp; <span class="smz-help-eg">contains "text"</span> &nbsp; <span class="smz-help-eg">is "value"</span> &nbsp; <span class="smz-help-eg">in (a, b, c)</span> &nbsp; <span class="smz-help-eg">empty</span><br>
+    Combinators: <span class="smz-help-eg">AND</span> &nbsp; <span class="smz-help-eg">OR</span> &nbsp; <span class="smz-help-eg">!</span> &nbsp; <span class="smz-help-eg">( )</span> — see the Template Language reference drawer for full docs.
+</div>
+</div>`);
+
+            const update = () => onChange({
+                ...config,
+                outputVar: $el.find('.smz-cv-name').val().trim(),
+                template:  $el.find('.smz-cv-template').val(),
+            });
+            $el.find('.smz-cv-name, .smz-cv-template').on('input', update);
+            $el.find('.smz-help-toggle').on('click', function () {
+                $el.find('.smz-help-text').slideToggle(150);
+                $(this).toggleClass('smz-help-open');
+            });
+            $el.on('click', '.smz-var-inject', function () {
+                const token = $(this).data('token');
+                const $ta   = $el.find('.smz-cv-template');
+                const el    = $ta[0];
+                if (!el) return;
+                const s = el.selectionStart ?? el.value.length, e = el.selectionEnd ?? s;
+                el.value = el.value.slice(0, s) + token + el.value.slice(e);
+                el.selectionStart = el.selectionEnd = s + token.length;
+                $ta.trigger('input');
+                el.focus();
+            });
         },
     },
 
     imageGen: {
         label: 'generate image',
         stage: 'postMessage',
-        defaultConfig: { source: 'pollinations', model: '', comfyUiUrl: '', prompt: '{{keyword}}', historyTurns: 0 },
+        defaultConfig: { source: 'pollinations', model: '', comfyUiUrl: '', prompt: '{{keyword}}', historyTurns: 0, outputVar: '', persist: true },
 
-        async execute(config, { matchedKeyword, messageId, stCtx, isCurrentGeneration }) {
+        async execute(config, { matchedKeyword, messageId, stCtx, isCurrentGeneration, vars }) {
             const msg = stCtx?.chat?.[messageId];
             if (!msg) return;
             if (!msg.extra || typeof msg.extra !== 'object') msg.extra = {};
 
-            const kwEsc      = (matchedKeyword ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const firstMatch = kwEsc ? new RegExp(kwEsc, 'i').exec(msg.mes ?? '') : null;
-            const upTo       = firstMatch ? (msg.mes ?? '').slice(0, firstMatch.index) : '';
+            const kwEsc       = (matchedKeyword ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const firstMatch  = kwEsc ? new RegExp(kwEsc, 'i').exec(msg.mes ?? '') : null;
+            const upTo        = firstMatch ? (msg.mes ?? '').slice(0, firstMatch.index) : '';
             const historyText = buildHistoryText(stCtx?.chat, messageId, config.historyTurns ?? 0);
 
             const prompt = interpolate(config.prompt ?? '', {
@@ -493,38 +714,52 @@ export const ACTION_REGISTRY = {
                 history:  historyText,
                 char:     name2 ?? '',
                 user:     name1 ?? '',
-            });
+            }, vars ?? {});
             if (!prompt.trim()) return;
 
-            let imagePath;
-            try {
-                imagePath = await generateAndUpload(prompt, config, stCtx?.name2 ?? name2 ?? 'streameryze');
-            } catch (err) {
-                console.error('[streameryze] imageGen: generation failed', err);
-                window.toastr?.error(`Image generation failed: ${err.message.slice(0, 80)}`, 'Streameryze');
-                return;
-            }
+            // Fire-and-forget — image generation can take many seconds and must not
+            // block onMessageReceived (which would lock the ST send button).
+            // All state needed is captured in the closure; the swipe guard
+            // (isCurrentGeneration) still cancels stale results if the user swipes.
+            (async () => {
+                let imagePath;
+                const tImg = performance.now();
+                try {
+                    imagePath = await generateAndUpload(prompt, config, stCtx?.name2 ?? name2 ?? 'streameryze');
+                    console.info(`[SMZ:PERF] imageGen | source=${config.source ?? 'pollinations'} | ${Math.round(performance.now() - tImg)}ms`);
+                } catch (err) {
+                    console.error('[streameryze] imageGen: generation failed', err);
+                    window.toastr?.error(`Image generation failed: ${err.message.slice(0, 80)}`, 'Streameryze');
+                    return;
+                }
 
-            // Swipe guard: abort if the generation this action belongs to is no longer current
-            if (!imagePath || (isCurrentGeneration && !isCurrentGeneration())) return;
+                // Swipe guard: abort if the generation this action belonged to is no longer current
+                if (!imagePath || (isCurrentGeneration && !isCurrentGeneration())) return;
 
-            if (!Array.isArray(msg.extra.media)) msg.extra.media = [];
-            msg.extra.media.push({ url: imagePath, type: 'image', source: 'generated', title: prompt });
-            msg.extra.media_display ??= 'gallery';
-            msg.extra.media_index = msg.extra.media.length - 1;
-            msg.extra.inline_image = true;
+                if (config.outputVar && vars) vars[config.outputVar] = imagePath;
 
-            try {
-                const $mesEl = $(`.mes[mesid="${messageId}"]`);
-                if ($mesEl.length) appendMediaToMessage(msg, $mesEl, 'keep');
-                if (typeof stCtx.saveChat === 'function') await stCtx.saveChat();
-                eventSource.emit(event_types.MESSAGE_UPDATED, messageId);
-            } catch (err) {
-                console.error('[streameryze] imageGen: render/save failed', err);
-            }
+                const persist = config.persist ?? true;
+                if (persist) {
+                    if (!Array.isArray(msg.extra.media)) msg.extra.media = [];
+                    msg.extra.media.push({ url: imagePath, type: 'image', source: 'generated', title: matchedKeyword ?? '' });
+                    msg.extra.media_display ??= 'gallery';
+                    msg.extra.media_index = msg.extra.media.length - 1;
+                    msg.extra.inline_image = true;
+                }
+
+                try {
+                    const $mesEl = $(`.mes[mesid="${messageId}"]`);
+                    if ($mesEl.length) appendMediaToMessage(msg, $mesEl, 'keep');
+                    if (persist && typeof stCtx.saveChat === 'function') await stCtx.saveChat();
+                    if (persist) eventSource.emit(event_types.MESSAGE_UPDATED, messageId);
+                } catch (err) {
+                    console.error('[streameryze] imageGen: render/save failed', err);
+                }
+            })();
+            // Return immediately — caller is not blocked by the image request
         },
 
-        renderConfig($el, config, onChange) {
+        renderConfig($el, config, onChange, ctx) {
             const srcOpts = Object.entries(SOURCE_LABELS)
                 .map(([val, text]) => {
                     const sel = val === (config.source || 'pollinations') ? ' selected' : '';
@@ -557,10 +792,21 @@ export const ACTION_REGISTRY = {
             value="${config.historyTurns ?? 0}" style="width:54px" />
         <small class="smz-sc-hint-inline">turns  —  use {{history}} in prompt</small>
     </div>
+    <div class="smz-sc-row">
+        <label class="smz-sc-lbl">save as</label>
+        <input type="text" class="smz-ig-outvar text_pole" placeholder="variable name (optional)" value="${esc(config.outputVar ?? '')}" style="flex:1" />
+    </div>
+    ${renderVarLegend(ctx?.priorActions)}
     <textarea class="smz-ig-prompt text_pole" rows="2"
         placeholder="Image prompt — {{keyword}} {{up-to}} {{message}} {{history}} {{char}} {{user}}">${esc(config.prompt || '')}</textarea>
+    <div class="smz-sc-row">
+        <label class="smz-check-row">
+            <input type="checkbox" class="smz-ig-persist" ${(config.persist ?? true) ? 'checked' : ''} />
+            persist in chat
+        </label>
+        <small class="smz-sc-hint-inline" style="margin-left:8px">uncheck for ephemeral (shown this session only)</small>
+    </div>
     <div class="smz-ig-footer">
-        <small class="smz-hint" style="flex:1">{{keyword}} {{up-to}} {{message}} {{history}} {{char}} {{user}}</small>
         <button class="smz-ig-test menu_button">Test</button>
         <span class="smz-ig-test-status"></span>
     </div>
@@ -571,7 +817,9 @@ export const ACTION_REGISTRY = {
                 model:        ($el.find('.smz-ig-model-ctrl select, .smz-ig-model-ctrl input').first().val() ?? '').trim(),
                 comfyUiUrl:   $el.find('.smz-ig-comfy').val()?.trim() || '',
                 historyTurns: parseInt($el.find('.smz-ig-history').val(), 10) || 0,
+                outputVar:    $el.find('.smz-ig-outvar').val()?.trim() || '',
                 prompt:       $el.find('.smz-ig-prompt').val() || '',
+                persist:      $el.find('.smz-ig-persist').prop('checked'),
             });
 
             const refreshModelControl = async (source, currentModel) => {
@@ -619,8 +867,20 @@ export const ACTION_REGISTRY = {
             });
 
             $el.find('.smz-ig-comfy').on('input', () => onChange(readConfig()));
-            $el.find('.smz-ig-history').on('input', () => onChange(readConfig()));
+            $el.find('.smz-ig-history, .smz-ig-outvar').on('input', () => onChange(readConfig()));
             $el.find('.smz-ig-prompt').on('input', () => onChange(readConfig()));
+            $el.find('.smz-ig-persist').on('change', () => onChange(readConfig()));
+            $el.on('click', '.smz-var-inject', function () {
+                const token = $(this).data('token');
+                const $ta   = $el.find('.smz-ig-prompt');
+                const el    = $ta[0];
+                if (!el) return;
+                const s = el.selectionStart ?? el.value.length, e = el.selectionEnd ?? s;
+                el.value = el.value.slice(0, s) + token + el.value.slice(e);
+                el.selectionStart = el.selectionEnd = s + token.length;
+                $ta.trigger('input');
+                el.focus();
+            });
 
             $el.find('.smz-ig-test').on('click', async function () {
                 const $btn    = $(this);
