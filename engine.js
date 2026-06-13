@@ -310,6 +310,9 @@ export function onGenerationStarted() {
     _pendingHighlights.clear();
     clearPrefetchCache();
     clearWiCache();
+    const stCtx = window.SillyTavern?.getContext?.();
+    const lastId = (stCtx?.chat?.length ?? 0) - 1;
+    if (lastId >= 0) setBadge(lastId, 'unchanged');
     log('generation started — dedup cleared');
 }
 
