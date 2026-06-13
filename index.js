@@ -163,6 +163,8 @@ function bindProfileHandlers() {
 
 function makeId() { return Math.random().toString(36).slice(2, 9); }
 
+const _collapsedRules = new Set();
+
 // ---------------------------------------------------------------------------
 // Settings panel — rule rendering
 // ---------------------------------------------------------------------------
@@ -224,7 +226,7 @@ function renderRuleCard(rule, ruleIdx) {
     const save = () => { saveSettingsDebounced(); updateProfileDirtyIndicator(); };
     const rebuild = () => { save(); renderRules(); };
 
-    const $card = $(`<div class="smz-rule-card" data-rule-id="${rule.id}">`);
+    const $card = $(`<div class="smz-rule-card${_collapsedRules.has(rule.id) ? ' smz-collapsed' : ''}" data-rule-id="${rule.id}">`);
 
     // ── Header ──────────────────────────────────────────────────────────────
     const triggerSummary = (() => {
@@ -257,7 +259,11 @@ function renderRuleCard(rule, ruleIdx) {
     $hdr.find('.smz-rule-toggle').on('change', function () { rule.enabled = this.checked; rebuild(); });
     $hdr.find('.smz-rule-dev').on('click', function () { rule.devMode = !rule.devMode; $(this).toggleClass('smz-dev-on'); save(); });
     $hdr.find('.smz-rule-delete').on('click', () => { s.rules.splice(ruleIdx, 1); rebuild(); });
-    $hdr.find('.smz-rule-collapse').on('click', () => $card.toggleClass('smz-collapsed'));
+    $hdr.find('.smz-rule-collapse').on('click', () => {
+        $card.toggleClass('smz-collapsed');
+        if ($card.hasClass('smz-collapsed')) _collapsedRules.add(rule.id);
+        else _collapsedRules.delete(rule.id);
+    });
     $card.append($hdr);
 
     // ── Body (collapsible) ───────────────────────────────────────────────────
