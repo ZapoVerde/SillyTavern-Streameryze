@@ -32,7 +32,7 @@
  *     external_io:     eventSource (event wiring only)
  */
 
-import { eventSource, event_types, saveSettingsDebounced } from '../../../../script.js';
+import { eventSource, event_types, saveSettingsDebounced, callPopup } from '../../../../script.js';
 import { extension_settings }                               from '../../../extensions.js';
 import { TRIGGER_REGISTRY }                                 from './triggers.js';
 import { ACTION_REGISTRY }                                  from './actions.js';
