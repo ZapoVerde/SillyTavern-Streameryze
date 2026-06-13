@@ -259,6 +259,7 @@ async function addSettingsPanel() {
         .smz-sc-wrap         { display:flex; flex-direction:column; gap:4px; width:100%; }
         .smz-sc-row          { display:flex; align-items:center; gap:6px; }
         .smz-sc-lbl          { font-size:.8em; opacity:.6; min-width:72px; text-align:right; flex-shrink:0; }
+        .smz-sc-hint-inline  { font-size:.78em; opacity:.5; }
         .smz-sc-prompt       { width:100%; }
         /* ── Status badge ─────────────────────────────────────────── */
         @keyframes smz-pulse { 0%,100%{background:rgba(200,55,55,.45);border-color:rgba(200,55,55,.7)} 50%{background:rgba(200,55,55,.1);border-color:rgba(200,55,55,.3)} }

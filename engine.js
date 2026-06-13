@@ -281,7 +281,7 @@ async function applyPrefetch(text, streamingMessageId, stCtx) {
 
         for (const { a, idx } of sideCallIdxs) {
             const key = `${rule.id}:${idx}`;
-            prefetchSideCall(key, a.config ?? {}, matched, text);
+            prefetchSideCall(key, a.config ?? {}, matched, text, stCtx, streamingMessageId);
             if (!_pendingHighlights.has(key)) {
                 _pendingHighlights.set(key, matched);
             }

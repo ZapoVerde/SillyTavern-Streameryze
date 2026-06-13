@@ -116,34 +116,82 @@ export function getPrefetchedResults(key) {
 }
 
 /**
- * Called by the engine on each stream token when a sideCall rule's trigger fires.
- * Fires dispatch promises for any new keyword instances since the last call.
- * key:            `${ruleId}:${actionIdx}`
- * matchedKeyword: the trigger's matched string
- * streamText:     accumulated stream text from the event (msg.mes is stale here)
+ * Builds a formatted transcript of the N turn-pairs before `beforeIndex`.
+ * Format matches the Vistalyze convention: "Name: message" blocks joined by double newlines.
  */
-export function prefetchSideCall(key, config, matchedKeyword, streamText) {
-    const callMode = config.callMode ?? 'once';
-    if ((config.outputMode ?? 'replaceKeyword') === 'silent') return;
+function buildHistoryText(chat, beforeIndex, numPairs) {
+    if (!numPairs || numPairs <= 0 || !chat?.length) return '';
+    const start = Math.max(0, beforeIndex - numPairs * 2);
+    const slice = chat.slice(start, beforeIndex);
+    if (!slice.length) return '';
+    return slice.map(m => `${m.name ?? 'Unknown'}: ${m.mes ?? ''}`).join('\n\n');
+}
 
-    const buildPrompt = () => interpolate(config.prompt ?? '', {
-        keyword: matchedKeyword ?? '',
-        message: streamText,
-        char:    name2 ?? '',
-        user:    name1 ?? '',
+/** Returns { text, start, end } of the newline-bounded paragraph at matchIndex. */
+function extractParagraph(text, matchIndex) {
+    const start = text.lastIndexOf('\n', matchIndex - 1) + 1;
+    const nlEnd  = text.indexOf('\n', matchIndex);
+    const end    = nlEnd === -1 ? text.length : nlEnd;
+    return { text: text.slice(start, end), start, end };
+}
+
+/** Returns all unique paragraphs (by start index) that contain a regex match, in order. */
+function collectUniqueParagraphs(text, re) {
+    const seen = new Map();
+    re.lastIndex = 0;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+        const p = extractParagraph(text, m.index);
+        if (!seen.has(p.start)) seen.set(p.start, p);
+    }
+    return [...seen.values()].sort((a, b) => a.start - b.start);
+}
+
+/**
+ * Called by the engine on each stream token when a sideCall rule's trigger fires.
+ * Fires dispatch promises for any new keyword/paragraph instances since the last call.
+ * key:             `${ruleId}:${actionIdx}`
+ * matchedKeyword:  the trigger's matched string
+ * streamText:      accumulated stream text (msg.mes is stale during streaming)
+ * stCtx / msgIdx:  for building {{history}} from chat turns before the streaming message
+ */
+export function prefetchSideCall(key, config, matchedKeyword, streamText, stCtx, streamingMsgIdx) {
+    const callMode = config.callMode ?? 'once';
+    const mode     = config.outputMode ?? 'replaceKeyword';
+    if (mode === 'silent') return;
+
+    const historyText = buildHistoryText(stCtx?.chat, streamingMsgIdx ?? 0, config.historyTurns ?? 0);
+    const kwEsc = matchedKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const mkRe  = () => new RegExp(kwEsc, 'gi');
+
+    const mkPrompt = (paragraph = '') => interpolate(config.prompt ?? '', {
+        keyword:   matchedKeyword ?? '',
+        message:   streamText,
+        paragraph,
+        history:   historyText,
+        char:      name2 ?? '',
+        user:      name1 ?? '',
     });
-    if (!buildPrompt().trim()) return;
+    if (!mkPrompt().trim()) return;
 
     if (callMode === 'once') {
         if (_prefetchCache.has(key)) return;
-        _prefetchCache.set(key, [dispatch(buildPrompt(), config.profileId ?? null).catch(() => null)]);
+        const para = mode === 'replaceParagraph' ? (() => { const m = mkRe().exec(streamText); return m ? extractParagraph(streamText, m.index).text : ''; })() : '';
+        _prefetchCache.set(key, [dispatch(mkPrompt(para), config.profileId ?? null).catch(() => null)]);
+    } else if (mode === 'replaceParagraph') {
+        const paragraphs = collectUniqueParagraphs(streamText, mkRe());
+        const existing   = _prefetchCache.get(key) ?? [];
+        while (existing.length < paragraphs.length) {
+            const p = paragraphs[existing.length];
+            existing.push(dispatch(mkPrompt(p.text), config.profileId ?? null).catch(() => null));
+        }
+        _prefetchCache.set(key, existing);
     } else {
-        // perMatch: fire one call per instance of the keyword in the accumulated text
-        const re       = new RegExp(matchedKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-        const count    = [...streamText.matchAll(re)].length;
+        // perMatch replaceKeyword: one call per keyword instance
+        const count    = [...streamText.matchAll(mkRe())].length;
         const existing = _prefetchCache.get(key) ?? [];
         while (existing.length < count) {
-            existing.push(dispatch(buildPrompt(), config.profileId ?? null).catch(() => null));
+            existing.push(dispatch(mkPrompt(), config.profileId ?? null).catch(() => null));
         }
         _prefetchCache.set(key, existing);
     }
@@ -222,47 +270,85 @@ export const ACTION_REGISTRY = {
     sideCall: {
         label: 'call LLM',
         stage: 'postMessage',
-        defaultConfig: { prompt: '', profileId: null, outputMode: 'replaceKeyword', callMode: 'once' },
+        defaultConfig: { prompt: '', profileId: null, outputMode: 'replaceKeyword', callMode: 'once', historyTurns: 0 },
 
         async execute(config, { matchedKeyword, messageId, stCtx, ruleId, actionIdx }) {
-            const msg      = stCtx?.chat?.[messageId];
-            const charName = name2 ?? '';
-            const userName = name1 ?? '';
-            const mode     = config.outputMode ?? 'replaceKeyword';
-            const callMode = config.callMode   ?? 'once';
-            const cacheKey = `${ruleId}:${actionIdx}`;
+            const msg         = stCtx?.chat?.[messageId];
+            const charName    = name2 ?? '';
+            const userName    = name1 ?? '';
+            const mode        = config.outputMode  ?? 'replaceKeyword';
+            const callMode    = config.callMode    ?? 'once';
+            const cacheKey    = `${ruleId}:${actionIdx}`;
+            const historyText = buildHistoryText(stCtx?.chat, messageId, config.historyTurns ?? 0);
+            const kwEsc       = matchedKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const mkRe        = () => new RegExp(kwEsc, 'gi');
 
-            const buildPrompt = () => interpolate(config.prompt ?? '', {
-                keyword: matchedKeyword ?? '',
-                message: msg?.mes ?? '',
-                char:    charName,
-                user:    userName,
+            const mkPrompt = (paragraph = '') => interpolate(config.prompt ?? '', {
+                keyword:   matchedKeyword ?? '',
+                message:   msg?.mes ?? '',
+                paragraph,
+                history:   historyText,
+                char:      charName,
+                user:      userName,
             });
 
-            if (!buildPrompt().trim()) return;
+            if (!mkPrompt().trim()) return;
+
+            const save = async () => {
+                updateMessageBlock(messageId, msg);
+                if (typeof stCtx.saveChat === 'function') await stCtx.saveChat();
+                eventSource.emit(event_types.MESSAGE_UPDATED, messageId);
+            };
+
+            // replaceParagraph: replace the entire newline-bounded paragraph(s) containing the keyword.
+            if (mode === 'replaceParagraph') {
+                if (!msg) return;
+                if (callMode === 'perMatch') {
+                    const paragraphs = collectUniqueParagraphs(msg.mes, mkRe());
+                    if (!paragraphs.length) return;
+                    const cached = getPrefetchedResults(cacheKey) ?? [];
+                    const n      = paragraphs.length;
+                    const nc     = Math.min(cached.length, n);
+                    const [pre, fresh] = await Promise.all([
+                        Promise.all(cached.slice(0, nc)),
+                        runQueued(paragraphs.slice(nc).map(p => () => dispatch(mkPrompt(p.text), config.profileId ?? null))),
+                    ]);
+                    const results = [...pre, ...fresh];
+                    let built = msg.mes;
+                    for (let i = n - 1; i >= 0; i--) {
+                        if (!results[i]) continue;
+                        built = built.slice(0, paragraphs[i].start) + results[i] + built.slice(paragraphs[i].end);
+                    }
+                    msg.mes = built;
+                } else {
+                    // once: first matching paragraph only
+                    const firstMatch = mkRe().exec(msg.mes);
+                    if (!firstMatch) return;
+                    const p      = extractParagraph(msg.mes, firstMatch.index);
+                    const cached = getPrefetchedResults(cacheKey);
+                    let text;
+                    try {
+                        text = cached?.length ? await cached[0] : await dispatch(mkPrompt(p.text), config.profileId ?? null);
+                    } catch (err) { console.error('[streameryze] sideCall replaceParagraph: dispatch failed', err); return; }
+                    if (!text) return;
+                    msg.mes = msg.mes.slice(0, p.start) + text + msg.mes.slice(p.end);
+                }
+                try { await save(); } catch (err) { console.error('[streameryze] sideCall replaceParagraph: render/save failed', err); }
+                return;
+            }
 
             // perMatch + replaceKeyword: one call per keyword instance.
-            // Uses cached in-flight promises from the prefetch pass (started during streaming).
-            // Any instances not covered by the cache get fresh serial calls.
             if (callMode === 'perMatch' && mode === 'replaceKeyword') {
                 if (!msg) return;
-                const re      = new RegExp(matchedKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-                const matches = [...msg.mes.matchAll(re)];
+                const matches = [...msg.mes.matchAll(mkRe())];
                 if (!matches.length) return;
-
                 const cached = getPrefetchedResults(cacheKey) ?? [];
-
-                // Await cached promises concurrently (already in-flight — safe).
-                // Fresh dispatches (non-streaming case) run serially.
-                const prefetchedCount = Math.min(cached.length, matches.length);
-                const [prefetchedResults, freshResults] = await Promise.all([
-                    Promise.all(cached.slice(0, prefetchedCount)),
-                    runQueued(
-                        matches.slice(prefetchedCount).map(() => () => dispatch(buildPrompt(), config.profileId ?? null)),
-                    ),
+                const nc     = Math.min(cached.length, matches.length);
+                const [pre, fresh] = await Promise.all([
+                    Promise.all(cached.slice(0, nc)),
+                    runQueued(matches.slice(nc).map(() => () => dispatch(mkPrompt(), config.profileId ?? null))),
                 ]);
-                const results = [...prefetchedResults, ...freshResults];
-
+                const results = [...pre, ...fresh];
                 let built = msg.mes;
                 for (let i = matches.length - 1; i >= 0; i--) {
                     if (!results[i]) continue;
@@ -270,73 +356,46 @@ export const ACTION_REGISTRY = {
                     built = built.slice(0, m.index) + results[i] + built.slice(m.index + m[0].length);
                 }
                 msg.mes = built;
-                try {
-                    updateMessageBlock(messageId, msg);
-                    if (typeof stCtx.saveChat === 'function') await stCtx.saveChat();
-                    eventSource.emit(event_types.MESSAGE_UPDATED, messageId);
-                } catch (err) { console.error('[streameryze] sideCall perMatch: render/save failed', err); }
+                try { await save(); } catch (err) { console.error('[streameryze] sideCall perMatch: render/save failed', err); }
                 return;
             }
 
-            // once: single LLM call. Use prefetched promise if available.
+            // once: single LLM call, use prefetched promise if available.
             const cached = getPrefetchedResults(cacheKey);
             let text;
             try {
-                text = cached?.length ? await cached[0] : await dispatch(buildPrompt(), config.profileId ?? null);
-            } catch (err) {
-                console.error('[streameryze] sideCall: dispatch failed', err);
-                return;
-            }
+                text = cached?.length ? await cached[0] : await dispatch(mkPrompt(), config.profileId ?? null);
+            } catch (err) { console.error('[streameryze] sideCall: dispatch failed', err); return; }
 
-            if (!text) return;
-            if (mode === 'silent') return;
+            if (!text || mode === 'silent') return;
 
             if (mode === 'replaceKeyword') {
                 if (!msg) return;
-                const re = new RegExp(matchedKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-                msg.mes = msg.mes.replace(re, text);
-                try {
-                    updateMessageBlock(messageId, msg);
-                    if (typeof stCtx.saveChat === 'function') await stCtx.saveChat();
-                    eventSource.emit(event_types.MESSAGE_UPDATED, messageId);
-                } catch (err) { console.error('[streameryze] sideCall replaceKeyword: render/save failed', err); }
+                msg.mes = msg.mes.replace(mkRe(), text);
+                try { await save(); } catch (err) { console.error('[streameryze] sideCall replaceKeyword: render/save failed', err); }
                 return;
             }
-
             if (mode === 'appendToMessage') {
                 if (!msg) return;
                 msg.mes = msg.mes + '\n\n' + text;
-                try {
-                    updateMessageBlock(messageId, msg);
-                    if (typeof stCtx.saveChat === 'function') await stCtx.saveChat();
-                    eventSource.emit(event_types.MESSAGE_UPDATED, messageId);
-                } catch (err) { console.error('[streameryze] sideCall appendToMessage: render/save failed', err); }
+                try { await save(); } catch (err) { console.error('[streameryze] sideCall appendToMessage: render/save failed', err); }
                 return;
             }
-
             if (mode === 'insertMessage') {
                 const newMsg = {
-                    name:      charName,
-                    is_user:   false,
-                    is_system: false,
+                    name: charName, is_user: false, is_system: false,
                     send_date: new Date().toLocaleString(),
-                    mes:       text,
-                    extra:     {},
-                    swipe_id:  0,
-                    swipes:    [text],
+                    mes: text, extra: {}, swipe_id: 0, swipes: [text],
                 };
                 stCtx.chat.splice(messageId + 1, 0, newMsg);
                 try {
                     addOneMessage(newMsg, { insertAfter: messageId, scroll: true });
                     if (typeof stCtx.saveChat === 'function') await stCtx.saveChat();
                 } catch (err) { console.error('[streameryze] sideCall insertMessage: failed', err); }
-                return;
             }
         },
 
         renderConfig($el, config, onChange) {
-            // Build Connection Manager profile options.
-            // Falls back gracefully if the extension is disabled or unavailable.
             let profileOpts = `<option value="">main ST chat LLM (default)</option>`;
             try {
                 for (const p of ConnectionManagerRequestService.getSupportedProfiles()) {
@@ -356,10 +415,11 @@ export const ACTION_REGISTRY = {
     <div class="smz-sc-row">
         <label class="smz-sc-lbl">output</label>
         <select class="smz-cfg smz-sc-mode">
-            <option value="replaceKeyword" ${s(config.outputMode, 'replaceKeyword' )}>replace keyword</option>
-            <option value="appendToMessage"${s(config.outputMode, 'appendToMessage')}>append to message</option>
-            <option value="insertMessage"  ${s(config.outputMode, 'insertMessage'  )}>insert as message</option>
-            <option value="silent"         ${s(config.outputMode, 'silent'         )}>silent (discard)</option>
+            <option value="replaceKeyword"  ${s(config.outputMode, 'replaceKeyword'  )}>replace keyword</option>
+            <option value="replaceParagraph"${s(config.outputMode, 'replaceParagraph')}>replace paragraph</option>
+            <option value="appendToMessage" ${s(config.outputMode, 'appendToMessage' )}>append to message</option>
+            <option value="insertMessage"   ${s(config.outputMode, 'insertMessage'   )}>insert as message</option>
+            <option value="silent"          ${s(config.outputMode, 'silent'          )}>silent (discard)</option>
         </select>
     </div>
     <div class="smz-sc-row">
@@ -369,20 +429,28 @@ export const ACTION_REGISTRY = {
             <option value="perMatch"${s(config.callMode, 'perMatch')}>per match — independent call per instance</option>
         </select>
     </div>
+    <div class="smz-sc-row">
+        <label class="smz-sc-lbl">history</label>
+        <input type="number" class="smz-cfg smz-sc-history" min="0" max="20" step="1"
+            value="${config.historyTurns ?? 0}" style="width:54px" />
+        <small class="smz-sc-hint-inline">turns  —  use {{history}} in prompt</small>
+    </div>
     <textarea class="text_pole smz-cfg smz-sc-prompt" rows="3"
-        placeholder="Prompt template. Use {{keyword}}, {{message}}, {{char}}, {{user}}">${esc(config.prompt)}</textarea>
-    <small class="smz-hint">Placeholders: {{keyword}} {{message}} {{char}} {{user}}</small>
+        placeholder="Prompt — {{keyword}} {{paragraph}} {{message}} {{history}} {{char}} {{user}}">${esc(config.prompt)}</textarea>
+    <small class="smz-hint">{{keyword}} {{paragraph}} {{message}} {{history}} {{char}} {{user}}</small>
 </div>`);
 
             const update = () => onChange({
                 ...config,
-                profileId:  $el.find('.smz-sc-profile').val() || null,
-                outputMode: $el.find('.smz-sc-mode').val(),
-                callMode:   $el.find('.smz-sc-callmode').val(),
-                prompt:     $el.find('.smz-sc-prompt').val(),
+                profileId:    $el.find('.smz-sc-profile').val() || null,
+                outputMode:   $el.find('.smz-sc-mode').val(),
+                callMode:     $el.find('.smz-sc-callmode').val(),
+                historyTurns: parseInt($el.find('.smz-sc-history').val(), 10) || 0,
+                prompt:       $el.find('.smz-sc-prompt').val(),
             });
 
             $el.find('.smz-sc-profile, .smz-sc-mode, .smz-sc-callmode').on('change', update);
+            $el.find('.smz-sc-history').on('input', update);
             $el.find('.smz-sc-prompt').on('input', update);
         },
     },
