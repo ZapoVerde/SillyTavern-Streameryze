@@ -18,11 +18,15 @@
  * and settings panel discover it automatically.
  *
  * @api-declaration
- * ACTION_REGISTRY — map of type key → action definition
+ * ACTION_REGISTRY       — map of type key → action definition
+ * clearPrefetchCache()  — called by engine on GENERATION_STARTED
+ * prefetchSideCall(...) — called by engine during streaming to pre-fire dispatches
+ * getPrefetchedResults  — called by sideCall.execute to consume cached promises
  *
  * Execution context shape:
  *   stream stage:      { matchedKeyword: string, stCtx: object }
- *   postMessage stage: { matchedKeyword: string, messageId: number, stCtx: object }
+ *   postMessage stage: { matchedKeyword: string, messageId: number, stCtx: object,
+ *                        ruleId: string, actionIdx: number }
  *
  * @contract
  *   assertions:
@@ -86,6 +90,63 @@ async function dispatch(prompt, profileId) {
     }
 
     return String(result?.content ?? result ?? '').trim();
+}
+
+// ---------------------------------------------------------------------------
+// Prefetch cache — sideCall dispatches fired during streaming
+//
+// Key: `${ruleId}:${actionIdx}`
+// Value: ordered array of in-flight / settled Promises<string|null>
+//   - once mode:     one promise max
+//   - perMatch mode: one promise per keyword instance seen so far
+//
+// The engine fires calls here as keyword instances appear in the stream.
+// sideCall.execute awaits the cached promises instead of dispatching fresh calls,
+// so results are usually already available by the time the stream ends.
+// ---------------------------------------------------------------------------
+
+const _prefetchCache = new Map();
+
+export function clearPrefetchCache() {
+    _prefetchCache.clear();
+}
+
+export function getPrefetchedResults(key) {
+    return _prefetchCache.get(key) ?? null;
+}
+
+/**
+ * Called by the engine on each stream token when a sideCall rule's trigger fires.
+ * Fires dispatch promises for any new keyword instances since the last call.
+ * key:            `${ruleId}:${actionIdx}`
+ * matchedKeyword: the trigger's matched string
+ * streamText:     accumulated stream text from the event (msg.mes is stale here)
+ */
+export function prefetchSideCall(key, config, matchedKeyword, streamText) {
+    const callMode = config.callMode ?? 'once';
+    if ((config.outputMode ?? 'replaceKeyword') === 'silent') return;
+
+    const buildPrompt = () => interpolate(config.prompt ?? '', {
+        keyword: matchedKeyword ?? '',
+        message: streamText,
+        char:    name2 ?? '',
+        user:    name1 ?? '',
+    });
+    if (!buildPrompt().trim()) return;
+
+    if (callMode === 'once') {
+        if (_prefetchCache.has(key)) return;
+        _prefetchCache.set(key, [dispatch(buildPrompt(), config.profileId ?? null).catch(() => null)]);
+    } else {
+        // perMatch: fire one call per instance of the keyword in the accumulated text
+        const re       = new RegExp(matchedKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+        const count    = [...streamText.matchAll(re)].length;
+        const existing = _prefetchCache.get(key) ?? [];
+        while (existing.length < count) {
+            existing.push(dispatch(buildPrompt(), config.profileId ?? null).catch(() => null));
+        }
+        _prefetchCache.set(key, existing);
+    }
 }
 
 /**
@@ -163,12 +224,13 @@ export const ACTION_REGISTRY = {
         stage: 'postMessage',
         defaultConfig: { prompt: '', profileId: null, outputMode: 'replaceKeyword', callMode: 'once' },
 
-        async execute(config, { matchedKeyword, messageId, stCtx }) {
+        async execute(config, { matchedKeyword, messageId, stCtx, ruleId, actionIdx }) {
             const msg      = stCtx?.chat?.[messageId];
             const charName = name2 ?? '';
             const userName = name1 ?? '';
             const mode     = config.outputMode ?? 'replaceKeyword';
             const callMode = config.callMode   ?? 'once';
+            const cacheKey = `${ruleId}:${actionIdx}`;
 
             const buildPrompt = () => interpolate(config.prompt ?? '', {
                 keyword: matchedKeyword ?? '',
@@ -179,26 +241,28 @@ export const ACTION_REGISTRY = {
 
             if (!buildPrompt().trim()) return;
 
-            // perMatch: one staggered call per keyword instance, each gets its own result.
-            // Serial queue (concurrency=1) matches the Canonize executor pattern —
-            // generateQuietPrompt uses shared ST state and is not safe for concurrent calls.
+            // perMatch + replaceKeyword: one call per keyword instance.
+            // Uses cached in-flight promises from the prefetch pass (started during streaming).
+            // Any instances not covered by the cache get fresh serial calls.
             if (callMode === 'perMatch' && mode === 'replaceKeyword') {
                 if (!msg) return;
                 const re      = new RegExp(matchedKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
                 const matches = [...msg.mes.matchAll(re)];
                 if (!matches.length) return;
 
-                let results;
-                try {
-                    results = await runQueued(
-                        matches.map(() => () => dispatch(buildPrompt(), config.profileId ?? null)),
-                    );
-                } catch (err) {
-                    console.error('[streameryze] sideCall perMatch: dispatch failed', err);
-                    return;
-                }
+                const cached = getPrefetchedResults(cacheKey) ?? [];
 
-                // Rebuild message backwards so earlier indices stay valid.
+                // Await cached promises concurrently (already in-flight — safe).
+                // Fresh dispatches (non-streaming case) run serially.
+                const prefetchedCount = Math.min(cached.length, matches.length);
+                const [prefetchedResults, freshResults] = await Promise.all([
+                    Promise.all(cached.slice(0, prefetchedCount)),
+                    runQueued(
+                        matches.slice(prefetchedCount).map(() => () => dispatch(buildPrompt(), config.profileId ?? null)),
+                    ),
+                ]);
+                const results = [...prefetchedResults, ...freshResults];
+
                 let built = msg.mes;
                 for (let i = matches.length - 1; i >= 0; i--) {
                     if (!results[i]) continue;
@@ -214,10 +278,11 @@ export const ACTION_REGISTRY = {
                 return;
             }
 
-            // once: single LLM call, result applied uniformly.
+            // once: single LLM call. Use prefetched promise if available.
+            const cached = getPrefetchedResults(cacheKey);
             let text;
             try {
-                text = await dispatch(buildPrompt(), config.profileId ?? null);
+                text = cached?.length ? await cached[0] : await dispatch(buildPrompt(), config.profileId ?? null);
             } catch (err) {
                 console.error('[streameryze] sideCall: dispatch failed', err);
                 return;

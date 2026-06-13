@@ -44,7 +44,7 @@
 import { messageFormatting }     from '../../../../script.js';
 import { extension_settings }   from '../../../extensions.js';
 import { TRIGGER_REGISTRY }     from './triggers.js';
-import { ACTION_REGISTRY }      from './actions.js';
+import { ACTION_REGISTRY, clearPrefetchCache, prefetchSideCall } from './actions.js';
 import { clearWiCache }         from './triggers.js';
 import { ensureBadge, setBadge } from './badge.js';
 
@@ -68,6 +68,48 @@ let _patchObserver         = null;  // active MutationObserver
 let _patchObserverMsgId    = -1;    // message ID currently being watched
 let _patchObserverApplying = false; // re-entrancy guard
 
+// Pending keyword highlights: sideCall rules that have fired a prefetch but
+// whose result has not yet been applied. The observer wraps these in
+// .smz-pending-kw spans on each ST render so the user sees something is in flight.
+// Keyed by `${ruleId}:${actionIdx}`, value is the matched keyword string.
+const _pendingHighlights = new Map();
+
+/**
+ * Wraps every occurrence of `keyword` inside mesTextEl in a .smz-pending-kw span.
+ * Skips text nodes inside pre/code/a/.smz-pending-kw to avoid double-wrapping.
+ */
+function highlightPendingKeyword(mesTextEl, keyword) {
+    if (!keyword) return;
+    const re = new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    const walker = document.createTreeWalker(mesTextEl, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+            if (node.parentElement?.closest('pre, code, a, .smz-pending-kw')) return NodeFilter.FILTER_REJECT;
+            return NodeFilter.FILTER_ACCEPT;
+        },
+    });
+    const nodes = [];
+    let n;
+    while ((n = walker.nextNode())) nodes.push(n);
+    for (const node of nodes) {
+        const txt = node.nodeValue;
+        re.lastIndex = 0;
+        if (!re.test(txt)) continue;
+        re.lastIndex = 0;
+        const frag = document.createDocumentFragment();
+        let last = 0, m;
+        while ((m = re.exec(txt)) !== null) {
+            if (m.index > last) frag.appendChild(document.createTextNode(txt.slice(last, m.index)));
+            const span = document.createElement('span');
+            span.className = 'smz-pending-kw';
+            span.textContent = m[0];
+            frag.appendChild(span);
+            last = m.index + m[0].length;
+        }
+        if (last < txt.length) frag.appendChild(document.createTextNode(txt.slice(last)));
+        node.parentNode.replaceChild(frag, node);
+    }
+}
+
 function startPatchObserver(messageId) {
     if (_patchObserverMsgId === messageId) return;
     stopPatchObserver();
@@ -75,10 +117,16 @@ function startPatchObserver(messageId) {
     if (!mesTextEl) return;
     _patchObserverMsgId = messageId;
     _patchObserver = new MutationObserver(() => {
-        if (_patchObserverApplying || !_pendingPatchHtml) return;
+        if (_patchObserverApplying) return;
+        if (!_pendingPatchHtml && !_pendingHighlights.size) return;
         _patchObserverApplying = true;
-        mesTextEl.innerHTML = _pendingPatchHtml;
-        _pendingPatchHtml = null;
+        if (_pendingPatchHtml) {
+            mesTextEl.innerHTML = _pendingPatchHtml;
+            _pendingPatchHtml = null;
+        }
+        for (const kw of _pendingHighlights.values()) {
+            highlightPendingKeyword(mesTextEl, kw);
+        }
         _patchObserverApplying = false;
     });
     _patchObserver.observe(mesTextEl, { childList: true, subtree: true, characterData: true });
@@ -132,11 +180,13 @@ function ruleHasStage(rule, stage) {
 }
 
 async function executeActions(rule, stage, execCtx) {
-    for (const action of (rule.actions ?? [])) {
+    const actions = rule.actions ?? [];
+    for (let actionIdx = 0; actionIdx < actions.length; actionIdx++) {
+        const action = actions[actionIdx];
         const def = ACTION_REGISTRY[action.type];
         if (!def || def.stage !== stage) continue;
-        log('action', { ruleId: rule.id, type: action.type, ...execCtx });
-        try { await def.execute(action.config ?? {}, execCtx); }
+        log('action', { ruleId: rule.id, type: action.type, actionIdx, ...execCtx });
+        try { await def.execute(action.config ?? {}, { ...execCtx, ruleId: rule.id, actionIdx }); }
         catch (err) { console.error(`[${EXT_NAME}] action ${action.type} threw`, err); }
     }
 }
@@ -211,6 +261,38 @@ async function applyLivePatch(text, streamingMessageId, stCtx) {
 }
 
 // ---------------------------------------------------------------------------
+// Prefetch pass
+// Fires sideCall LLM dispatches as soon as the trigger keyword first appears in
+// the stream, so the result is usually already settled by the time streaming ends.
+// Also registers pending highlight entries so the observer can annotate the DOM.
+// ---------------------------------------------------------------------------
+
+async function applyPrefetch(text, streamingMessageId, stCtx) {
+    const s = getSettings();
+    for (const rule of (s.rules ?? [])) {
+        if (!rule.enabled) continue;
+        const sideCallIdxs = (rule.actions ?? [])
+            .map((a, idx) => ({ a, idx }))
+            .filter(({ a }) => a.type === 'sideCall');
+        if (!sideCallIdxs.length) continue;
+
+        const matched = await evaluateTriggers(rule, text);
+        if (matched === null) continue;
+
+        for (const { a, idx } of sideCallIdxs) {
+            const key = `${rule.id}:${idx}`;
+            prefetchSideCall(key, a.config ?? {}, matched, text);
+            if (!_pendingHighlights.has(key)) {
+                _pendingHighlights.set(key, matched);
+            }
+        }
+    }
+    if (_pendingHighlights.size) {
+        startPatchObserver(streamingMessageId);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Event handlers (exported for index.js to wire up)
 // ---------------------------------------------------------------------------
 
@@ -218,6 +300,8 @@ export function onGenerationStarted() {
     stopPatchObserver();
     _fired.clear();
     _livePatches.clear();
+    _pendingHighlights.clear();
+    clearPrefetchCache();
     clearWiCache();
     log('generation started — dedup cleared');
 }
@@ -244,17 +328,19 @@ export async function onStreamToken(text) {
         await executeActions(rule, 'stream', { matchedKeyword: matched, stCtx });
     }
 
-    // Live visual patch for replace rules
+    // Live visual patch for replace rules + prefetch sideCall dispatches
     const streamingMessageId = (stCtx?.chat?.length ?? 0) - 1;
     if (streamingMessageId >= 0) {
         await applyLivePatch(text, streamingMessageId, stCtx);
+        await applyPrefetch(text, streamingMessageId, stCtx);
     }
 }
 
 export async function onMessageReceived(messageId) {
     const s = getSettings();
     if (!s?.enabled) return;
-    stopPatchObserver();  // stream is done; authoritative replace handles it from here
+    stopPatchObserver();      // stream is done; authoritative replace handles it from here
+    _pendingHighlights.clear(); // results will replace highlights
     const stCtx = window.SillyTavern?.getContext?.();
     const text  = stCtx?.chat?.[messageId]?.mes ?? '';
 

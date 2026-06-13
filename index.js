@@ -277,6 +277,8 @@ async function addSettingsPanel() {
         .smz-help-toggle:hover, .smz-help-open { opacity:.9 !important; }
         .smz-help-text       { font-size:.78em; opacity:.65; margin-top:5px; line-height:1.6; padding:5px 7px; border-left:2px solid rgba(255,255,255,.12); }
         .smz-help-eg         { font-family:monospace; background:rgba(255,255,255,.08); border-radius:3px; padding:0 4px; }
+        /* ── Pending-keyword highlight (sideCall in flight) ──────── */
+        .smz-pending-kw      { background:rgba(255,200,50,.18); border-radius:2px; padding:0 1px; outline:1px solid rgba(255,200,50,.35); }
     </style>
 </div>
 </div>
