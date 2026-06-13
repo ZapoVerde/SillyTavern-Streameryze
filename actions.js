@@ -37,6 +37,30 @@ import { ConnectionManagerRequestService } from '../../shared.js';
 
 function esc(s) { return $('<span>').text(s ?? '').html(); }
 
+/**
+ * Runs async task functions with capped concurrency, preserving result order.
+ * concurrency=1 gives serial execution (safe when the underlying call uses
+ * shared global state, e.g. generateQuietPrompt / generateRaw).
+ */
+function runQueued(taskFns, concurrency = 1) {
+    return new Promise(resolve => {
+        const results = new Array(taskFns.length).fill(null);
+        let nextIdx = 0, done = 0, running = 0;
+        if (!taskFns.length) { resolve(results); return; }
+        function kick() {
+            while (running < concurrency && nextIdx < taskFns.length) {
+                const i = nextIdx++;
+                running++;
+                taskFns[i]()
+                    .then(r  => { results[i] = r ?? null; })
+                    .catch(() => { results[i] = null; })
+                    .finally(() => { running--; done++; if (done === taskFns.length) resolve(results); else kick(); });
+            }
+        }
+        kick();
+    });
+}
+
 function interpolate(template, vars) {
     return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? '');
 }
@@ -143,33 +167,46 @@ export const ACTION_REGISTRY = {
             const msg      = stCtx?.chat?.[messageId];
             const charName = name2 ?? '';
             const userName = name1 ?? '';
+            const mode     = config.outputMode ?? 'replaceKeyword';
 
-            const prompt = interpolate(config.prompt ?? '', {
+            const buildPrompt = () => interpolate(config.prompt ?? '', {
                 keyword: matchedKeyword ?? '',
                 message: msg?.mes ?? '',
                 char:    charName,
                 user:    userName,
             });
 
-            if (!prompt.trim()) return;
+            if (!buildPrompt().trim()) return;
 
-            let text;
+            // Find every instance of the matched keyword (case-insensitive).
+            // One queued LLM call is fired per instance so each gets an independent
+            // result. Serial queue (concurrency=1) avoids shared-state collisions in
+            // generateQuietPrompt, matching the Canonize executor pattern.
+            const re      = new RegExp(matchedKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+            const matches = mode === 'replaceKeyword' ? [...(msg?.mes ?? '').matchAll(re)] : [null];
+
+            let results;
             try {
-                text = await dispatch(prompt, config.profileId ?? null);
+                results = await runQueued(
+                    matches.map(() => () => dispatch(buildPrompt(), config.profileId ?? null)),
+                );
             } catch (err) {
-                console.error('[streameryze] sideCall: LLM dispatch failed', err);
+                console.error('[streameryze] sideCall: dispatch failed', err);
                 return;
             }
-
-            if (!text) return;
-
-            const mode = config.outputMode ?? 'replaceKeyword';
 
             if (mode === 'silent') return;
 
             if (mode === 'replaceKeyword') {
                 if (!msg) return;
-                msg.mes = msg.mes.split(matchedKeyword).join(text);
+                // Rebuild message backwards so index positions stay valid.
+                let built = msg.mes;
+                for (let i = matches.length - 1; i >= 0; i--) {
+                    if (!results[i]) continue;
+                    const m = matches[i];
+                    built = built.slice(0, m.index) + results[i] + built.slice(m.index + m[0].length);
+                }
+                msg.mes = built;
                 try {
                     updateMessageBlock(messageId, msg);
                     if (typeof stCtx.saveChat === 'function') await stCtx.saveChat();
@@ -177,6 +214,9 @@ export const ACTION_REGISTRY = {
                 } catch (err) { console.error('[streameryze] sideCall replaceKeyword: render/save failed', err); }
                 return;
             }
+
+            const text = results[0];
+            if (!text) return;
 
             if (mode === 'appendToMessage') {
                 if (!msg) return;
@@ -190,8 +230,6 @@ export const ACTION_REGISTRY = {
             }
 
             if (mode === 'insertMessage') {
-                // Build and inject a new character message after messageId.
-                // addOneMessage handles both chat-array insertion and DOM rendering.
                 const newMsg = {
                     name:      charName,
                     is_user:   false,
