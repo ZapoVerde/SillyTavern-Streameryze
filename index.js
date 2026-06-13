@@ -37,7 +37,7 @@ import { extension_settings }                               from '../../../exten
 import { TRIGGER_REGISTRY }                                 from './triggers.js';
 import { ACTION_REGISTRY }                                  from './actions.js';
 import { onGenerationStarted, onStreamToken, onMessageReceived } from './engine.js';
-import { ensureBadge, reinjectAllBadges, removeAllBadges } from './badge.js';
+import { ensureBadge, setBadge, reinjectAllBadges, removeAllBadges } from './badge.js';
 
 const EXT_NAME = 'triggeryze';
 
@@ -472,7 +472,8 @@ async function addSettingsPanel() {
         .trg-sc-prompt       { width:100%; }
         /* ── Status badge ─────────────────────────────────────────── */
         @keyframes trg-pulse { 0%,100%{background:rgba(200,55,55,.45);border-color:rgba(200,55,55,.7)} 50%{background:rgba(200,55,55,.1);border-color:rgba(200,55,55,.3)} }
-        .trg-badge           { display:inline-flex; align-items:center; gap:4px; font-size:.72em; padding:2px 7px; border-radius:10px; border:1px solid var(--SmartThemeBorderColor,#444); white-space:nowrap; user-select:none; margin-top:3px; opacity:.85; transition:background .2s, border-color .2s, color .2s; }
+        .trg-badge           { display:inline-flex; align-items:center; gap:4px; font-size:.72em; padding:2px 7px; border-radius:10px; border:1px solid var(--SmartThemeBorderColor,#444); white-space:nowrap; user-select:none; margin-top:3px; opacity:.85; transition:background .2s, border-color .2s, color .2s; cursor:pointer; }
+        .trg-badge:hover     { opacity:1; }
         .trg-badge-unchanged { background:rgba(128,128,128,.1); color:var(--SmartThemeBodyColor,#ccc); opacity:.5; }
         .trg-badge-thinking  { animation:trg-pulse .7s ease-in-out infinite; color:#f99; }
         .trg-badge-modified  { background:rgba(50,180,80,.25); border-color:rgba(50,180,80,.5); color:#8f8; }
@@ -551,4 +552,11 @@ eventSource.on(event_types.STREAM_TOKEN_RECEIVED,        onStreamToken);
 eventSource.on(event_types.MESSAGE_RECEIVED,             onMessageReceived);
 eventSource.on(event_types.CHAT_CHANGED,                 reinjectAllBadges);
 eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED,   (messageId) => ensureBadge(messageId));
+
+$(document).on('click', '.trg-badge', async function () {
+    const messageId = parseInt($(this).closest('.mes').attr('mesid'), 10);
+    if (isNaN(messageId)) return;
+    setBadge(messageId, 'unchanged');
+    await onMessageReceived(messageId);
+});
 addSettingsPanel();
