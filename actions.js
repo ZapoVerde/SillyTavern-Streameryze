@@ -161,13 +161,14 @@ export const ACTION_REGISTRY = {
     sideCall: {
         label: 'call LLM',
         stage: 'postMessage',
-        defaultConfig: { prompt: '', profileId: null, outputMode: 'replaceKeyword' },
+        defaultConfig: { prompt: '', profileId: null, outputMode: 'replaceKeyword', callMode: 'once' },
 
         async execute(config, { matchedKeyword, messageId, stCtx }) {
             const msg      = stCtx?.chat?.[messageId];
             const charName = name2 ?? '';
             const userName = name1 ?? '';
             const mode     = config.outputMode ?? 'replaceKeyword';
+            const callMode = config.callMode   ?? 'once';
 
             const buildPrompt = () => interpolate(config.prompt ?? '', {
                 keyword: matchedKeyword ?? '',
@@ -178,28 +179,26 @@ export const ACTION_REGISTRY = {
 
             if (!buildPrompt().trim()) return;
 
-            // Find every instance of the matched keyword (case-insensitive).
-            // One queued LLM call is fired per instance so each gets an independent
-            // result. Serial queue (concurrency=1) avoids shared-state collisions in
-            // generateQuietPrompt, matching the Canonize executor pattern.
-            const re      = new RegExp(matchedKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-            const matches = mode === 'replaceKeyword' ? [...(msg?.mes ?? '').matchAll(re)] : [null];
-
-            let results;
-            try {
-                results = await runQueued(
-                    matches.map(() => () => dispatch(buildPrompt(), config.profileId ?? null)),
-                );
-            } catch (err) {
-                console.error('[streameryze] sideCall: dispatch failed', err);
-                return;
-            }
-
-            if (mode === 'silent') return;
-
-            if (mode === 'replaceKeyword') {
+            // perMatch: one staggered call per keyword instance, each gets its own result.
+            // Serial queue (concurrency=1) matches the Canonize executor pattern —
+            // generateQuietPrompt uses shared ST state and is not safe for concurrent calls.
+            if (callMode === 'perMatch' && mode === 'replaceKeyword') {
                 if (!msg) return;
-                // Rebuild message backwards so index positions stay valid.
+                const re      = new RegExp(matchedKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+                const matches = [...msg.mes.matchAll(re)];
+                if (!matches.length) return;
+
+                let results;
+                try {
+                    results = await runQueued(
+                        matches.map(() => () => dispatch(buildPrompt(), config.profileId ?? null)),
+                    );
+                } catch (err) {
+                    console.error('[streameryze] sideCall perMatch: dispatch failed', err);
+                    return;
+                }
+
+                // Rebuild message backwards so earlier indices stay valid.
                 let built = msg.mes;
                 for (let i = matches.length - 1; i >= 0; i--) {
                     if (!results[i]) continue;
@@ -211,12 +210,33 @@ export const ACTION_REGISTRY = {
                     updateMessageBlock(messageId, msg);
                     if (typeof stCtx.saveChat === 'function') await stCtx.saveChat();
                     eventSource.emit(event_types.MESSAGE_UPDATED, messageId);
-                } catch (err) { console.error('[streameryze] sideCall replaceKeyword: render/save failed', err); }
+                } catch (err) { console.error('[streameryze] sideCall perMatch: render/save failed', err); }
                 return;
             }
 
-            const text = results[0];
+            // once: single LLM call, result applied uniformly.
+            let text;
+            try {
+                text = await dispatch(buildPrompt(), config.profileId ?? null);
+            } catch (err) {
+                console.error('[streameryze] sideCall: dispatch failed', err);
+                return;
+            }
+
             if (!text) return;
+            if (mode === 'silent') return;
+
+            if (mode === 'replaceKeyword') {
+                if (!msg) return;
+                const re = new RegExp(matchedKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+                msg.mes = msg.mes.replace(re, text);
+                try {
+                    updateMessageBlock(messageId, msg);
+                    if (typeof stCtx.saveChat === 'function') await stCtx.saveChat();
+                    eventSource.emit(event_types.MESSAGE_UPDATED, messageId);
+                } catch (err) { console.error('[streameryze] sideCall replaceKeyword: render/save failed', err); }
+                return;
+            }
 
             if (mode === 'appendToMessage') {
                 if (!msg) return;
@@ -277,6 +297,13 @@ export const ACTION_REGISTRY = {
             <option value="silent"         ${s(config.outputMode, 'silent'         )}>silent (discard)</option>
         </select>
     </div>
+    <div class="smz-sc-row">
+        <label class="smz-sc-lbl">calls</label>
+        <select class="smz-cfg smz-sc-callmode">
+            <option value="once"    ${s(config.callMode, 'once'    )}>once — same result for all instances</option>
+            <option value="perMatch"${s(config.callMode, 'perMatch')}>per match — independent call per instance</option>
+        </select>
+    </div>
     <textarea class="text_pole smz-cfg smz-sc-prompt" rows="3"
         placeholder="Prompt template. Use {{keyword}}, {{message}}, {{char}}, {{user}}">${esc(config.prompt)}</textarea>
     <small class="smz-hint">Placeholders: {{keyword}} {{message}} {{char}} {{user}}</small>
@@ -286,10 +313,11 @@ export const ACTION_REGISTRY = {
                 ...config,
                 profileId:  $el.find('.smz-sc-profile').val() || null,
                 outputMode: $el.find('.smz-sc-mode').val(),
+                callMode:   $el.find('.smz-sc-callmode').val(),
                 prompt:     $el.find('.smz-sc-prompt').val(),
             });
 
-            $el.find('.smz-sc-profile, .smz-sc-mode').on('change', update);
+            $el.find('.smz-sc-profile, .smz-sc-mode, .smz-sc-callmode').on('change', update);
             $el.find('.smz-sc-prompt').on('input', update);
         },
     },
