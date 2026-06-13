@@ -2,60 +2,92 @@
 
 **[WIP]**
 
-Streameryze watches the AI's response as it arrives and fires an action when a keyword appears. Four action types are available: stop the generation, replace the keyword in the finished message, trigger a background LLM call, or automatically stop and continue when the AI writes something that would activate a lorebook entry.
-
-Rules are configured in the Extensions panel. Each rule is paired with an action. Multiple rules can be active at once.
+Streameryze watches the AI's response as it arrives and fires actions when keywords appear. It can stop the response, replace text, or trigger background LLM calls and weave the results back into the message.
 
 ---
 
 ## Installation
 
-1. Open SillyTavern and click the **Extensions** icon (the puzzle piece).
+1. Open SillyTavern and click the **Extensions** icon (puzzle piece).
 2. Click **Install extension**.
-3. Paste the repository URL and click **Install just for me** or **Install for all users**.
-4. Streameryze will appear in your extensions list. Enable it from the checkbox in the panel.
+3. Paste the repository URL and confirm.
+4. Streameryze appears in the extensions list. Enable it from its settings panel.
 
 ---
 
 ## How It Works
 
-Every AI response is monitored as it streams in. When the accumulated text contains a matching keyword, the rule's action fires.
+Rules are made of triggers and actions.
 
-Deduplication is per rule within a single generation: if a keyword matches, that rule will not fire again until the next turn. The dedup state resets automatically when a new generation begins.
+**Triggers** define when the rule fires: a keyword, a lorebook entry, or a regex pattern. Multiple triggers can be combined with AND or OR logic.
+
+**Actions** define what happens when the rule fires. Multiple actions can be stacked on one rule.
+
+Each rule fires at most once per AI turn. Dedup resets automatically when a new generation starts.
 
 ---
 
-## Action Types
+## Triggers
 
-### lorebook stop
+### Keyword match
 
-Watches the stream against every primary keyword in your currently active lorebooks. The moment the AI writes a word that would trigger a lorebook entry, the generation stops and a continue fires automatically. The lorebook entry is now active in the resumed reply — the AI gets the context it was missing.
+Matches one or more words in the AI's response. Keywords are comma-separated. Wildcards are supported: `*` matches any number of characters, `?` matches exactly one. Case-sensitive matching is optional.
 
-No keyword field needed. The lorebook provides the keywords.
+Examples: `sam*, el?ra` matches `samurai`, `samuel`, `elara`, `elora`.
 
-This action is useful when the AI starts writing something it has no lorebook context for yet. Rather than letting it invent details you will have to delete, the generation cuts at the trigger point and resumes with the entry injected.
+### Lorebook keyword
 
-Works only when streaming is enabled.
+Fires when the AI writes any primary keyword from the currently active lorebooks. No configuration needed — the lorebooks provide the keywords.
 
-### stop
+Useful for detecting when the AI starts writing something it has no lorebook context for yet.
 
-Halts the generation the moment the keyword is detected in the stream. The message is saved with whatever text was produced up to that point — the keyword will be visible in the output.
+### Regex
 
-This action only works when SillyTavern's streaming mode is enabled. It has no effect in non-streaming mode.
+Matches a regular expression against the response. Supports SillyTavern's `/pattern/flags` syntax.
 
-To halt and remove the keyword, pair a `stop` rule with a `replace` rule on the same keyword with a blank replacement. Both will fire in the same turn: stop during the stream, replace after.
+### Trigger logic
 
-### replace
+When a rule has multiple triggers, choose whether **any** (OR) or **all** (AND) must match before the rule fires.
 
-Waits for the generation to finish, then replaces every occurrence of the keyword in the final message with the configured replacement string. Leaving the replacement blank deletes the keyword.
+---
 
-Works in both streaming and non-streaming mode.
+## Actions
 
-### side call
+### Stop
 
-Fires after the generation completes when the keyword is present in the final message. Intended as an extension point for triggering a background LLM call in response to the keyword.
+Halts the AI response the moment the keyword is detected. The response is saved with whatever was produced up to that point.
 
-**This action is a stub.** It does nothing out of the box. To use it, implement the prompt builder and result handler in `doSideCall()` inside `index.js`.
+Requires streaming to be enabled.
+
+### Stop + continue
+
+Stops the response and immediately continues the generation. The new response starts after the stop point, with any lorebook entries the stopped keyword would have activated now present in context.
+
+Useful for injecting lorebook context mid-response without manual intervention. Requires streaming.
+
+### Replace
+
+Replaces every occurrence of the keyword in the finished message with a configured string. Leave the replacement blank to delete the keyword. Works in both streaming and non-streaming mode.
+
+The replacement is shown visually during streaming. The corrected text appears as it arrives, not after.
+
+### Call LLM
+
+Fires an LLM request when the keyword appears and applies the result to the message.
+
+**Connection** — which LLM to use. Defaults to the main ST chat model. If the Connection Manager extension is installed, any registered profile can be selected instead.
+
+**Output** — what to do with the result:
+- *Replace keyword* — swaps every instance of the keyword with the LLM's response
+- *Append to message* — adds the response at the end of the AI's message
+- *Insert as message* — inserts the response as a new AI message after the current one
+- *Silent* — runs the call but discards the result
+
+**Calls** — *Once* sends one request and uses the same result for every keyword instance. *Per match* sends one independent request per occurrence.
+
+**Prompt template** — the prompt sent to the LLM. Supports `{{keyword}}`, `{{message}}`, `{{char}}`, and `{{user}}` placeholders.
+
+The LLM call starts as soon as the keyword appears in the stream rather than waiting for the response to finish. Keywords with in-flight calls are shown with a faint amber highlight while the result is on its way. By the time streaming ends, the result is usually already ready.
 
 ---
 
@@ -63,30 +95,17 @@ Fires after the generation completes when the keyword is present in the final me
 
 | Setting | Default | Description |
 |---|---|---|
-| **Enable** | On | Enables or disables all Streameryze processing. When off, no rules fire. |
-| **Verbose logging** | Off | Writes per-rule evaluation details to the browser console. |
-
-### Rules
-
-Each rule has:
-
-| Field | Description |
-|---|---|
-| **Enable** (checkbox) | Whether this rule is active. Disabled rules are never evaluated. |
-| **Keyword** | The string to search for. Case-sensitive, exact match. |
-| **Action** | One of `lorebook stop`, `stop`, `replace`, or `side call`. |
-| **Replacement** | Text to substitute in place of the keyword. Only shown for `replace` rules. Leave blank to delete the keyword. |
-
-Rules are evaluated in list order. Use the trash button to delete a rule.
+| **Enable** | On | Enables or disables all Streameryze rules. When off, nothing fires. |
+| **Verbose logging** | Off | Writes rule evaluation details to the browser console. |
+| **Run on non-streaming responses** | Off | Also evaluates stream-type rules against non-streamed responses. |
+| **Show status badges** | On | Adds a small pill below each AI message showing whether Streameryze modified it. |
 
 ---
 
 ## Notes
 
-- **lorebook stop and stop both require streaming to be enabled.** Neither action has any effect in non-streaming mode.
-- **lorebook stop reads primary keys only.** Secondary (selective logic) keys are not scanned.
-- **lorebook stop fires on the first matching keyword it finds per stream event.** If multiple lorebook keywords appear in the same chunk, the first match wins and the rest are ignored for that turn. If SillyTavern is configured for non-streaming responses, the stream is never active and the stop action cannot fire.
-- **Keyword matching is case-sensitive.** `[STOP]` and `[stop]` are different keywords.
-- **A stop rule leaves the keyword in the message.** If you want it removed, add a replace rule for the same keyword with a blank replacement.
-- **replace rewrites the saved chat.** The change persists across reloads.
-- **side call does nothing until implemented.** See `doSideCall()` in `index.js`.
+- **Stop and Stop + continue require streaming.** Neither fires in non-streaming mode.
+- **Lorebook keyword reads primary keys only.** Selective and secondary logic keys are not scanned.
+- **Keyword matching is case-insensitive by default.** Enable the case-sensitive toggle in the keyword match trigger to change this.
+- **Replace rewrites the saved chat.** The change persists across reloads.
+- **Each rule fires at most once per turn.** If the keyword appears multiple times, the rule fires once. The Call LLM action's *per match* mode controls how many LLM calls happen within that single firing.
