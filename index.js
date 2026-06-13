@@ -399,7 +399,7 @@ async function addSettingsPanel() {
         </table>
 
         <div class="smz-ref-section">Conditional blocks</div>
-        <div class="smz-help-eg smz-ref-block">{{#if condition}}body{{/if}}</div>
+        <div class="smz-help-eg smz-ref-block">{{if condition}}body{{/if}}</div>
         <p>Condition uses bare variable names — no <span class="smz-help-eg">{{}}</span> around them. Body may contain <span class="smz-help-eg">{{variable}}</span> substitutions. Blocks can be stacked but not nested.</p>
 
         <div class="smz-ref-section">Condition operators</div>
@@ -421,11 +421,11 @@ async function addSettingsPanel() {
 
         <div class="smz-ref-section">Examples</div>
         <table class="smz-ref-table smz-ref-examples">
-            <tr><td><span class="smz-help-eg">{{#if keyword matches "breath|hitch"}}Forced Physical Reaction Cliché{{/if}}</span></td></tr>
-            <tr><td><span class="smz-help-eg">{{#if keyword is "stone"}}Purple Prose Metaphor{{/if}}</span></td></tr>
-            <tr><td><span class="smz-help-eg">{{#if keyword matches "breath" OR keyword matches "claiming"}}label{{/if}}</span></td></tr>
-            <tr><td><span class="smz-help-eg">{{#if keyword matches "breath" AND message contains "shaky"}}label{{/if}}</span></td></tr>
-            <tr><td><span class="smz-help-eg">{{#if !(keyword empty)}}Matched: {{keyword}}{{/if}}</span></td></tr>
+            <tr><td><span class="smz-help-eg">{{if keyword matches "breath|hitch"}}Forced Physical Reaction Cliché{{/if}}</span></td></tr>
+            <tr><td><span class="smz-help-eg">{{if keyword is "stone"}}Purple Prose Metaphor{{/if}}</span></td></tr>
+            <tr><td><span class="smz-help-eg">{{if keyword matches "breath" OR keyword matches "claiming"}}label{{/if}}</span></td></tr>
+            <tr><td><span class="smz-help-eg">{{if keyword matches "breath" AND message contains "shaky"}}label{{/if}}</span></td></tr>
+            <tr><td><span class="smz-help-eg">{{if !(keyword empty)}}Matched: {{keyword}}{{/if}}</span></td></tr>
         </table>
 
         </div>

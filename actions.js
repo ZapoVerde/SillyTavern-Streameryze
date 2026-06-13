@@ -131,10 +131,10 @@ function _evalCondition(cond, lookup) {
 function interpolate(template, vars, ruleVars = {}) {
     const lookup = (name) => vars[name] ?? ruleVars[name] ?? '';
 
-    // {{#if condition}}body{{/if}}
+    // {{if condition}}body{{/if}}
     // Condition uses bare variable names (no {{}}). Body may contain {{varName}} tokens.
     let out = template.replace(
-        /\{\{#if\s+([\s\S]*?)\}\}([\s\S]*?)\{\{\/if\}\}/g,
+        /\{\{if\s+([\s\S]*?)\}\}([\s\S]*?)\{\{\/if\}\}/g,
         (_, cond, body) => _evalCondition(cond, lookup) ? body : '',
     );
 
@@ -657,12 +657,12 @@ export const ACTION_REGISTRY = {
     </div>
     ${renderVarLegend(ctx?.priorActions)}
     <textarea class="text_pole smz-cfg smz-cv-template" rows="3"
-        placeholder="{{#if keyword matches &quot;breath|hitch&quot;}}Forced Physical Reaction Cliché&#10;{{/if}}{{#if keyword is &quot;stone&quot;}}Purple Prose Metaphor&#10;{{/if}}">${esc(config.template ?? '')}</textarea>
+        placeholder="{{if keyword matches &quot;breath|hitch&quot;}}Forced Physical Reaction Cliché&#10;{{/if}}{{if keyword is &quot;stone&quot;}}Purple Prose Metaphor&#10;{{/if}}">${esc(config.template ?? '')}</textarea>
 <div class="smz-kw-footer">
     <span class="smz-help-toggle" title="Template language quick reference">?</span>
 </div>
 <div class="smz-help-text" style="display:none;">
-    <b>{{varName}}</b> — insert variable &nbsp;&nbsp; <b>{{#if condition}}…{{/if}}</b> — conditional block<br>
+    <b>{{varName}}</b> — insert variable &nbsp;&nbsp; <b>{{if condition}}…{{/if}}</b> — conditional block<br>
     Condition operators: <span class="smz-help-eg">matches "regex"</span> &nbsp; <span class="smz-help-eg">contains "text"</span> &nbsp; <span class="smz-help-eg">is "value"</span> &nbsp; <span class="smz-help-eg">in (a, b, c)</span> &nbsp; <span class="smz-help-eg">empty</span><br>
     Combinators: <span class="smz-help-eg">AND</span> &nbsp; <span class="smz-help-eg">OR</span> &nbsp; <span class="smz-help-eg">!</span> &nbsp; <span class="smz-help-eg">( )</span> — see the Template Language reference drawer for full docs.
 </div>
