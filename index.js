@@ -318,6 +318,7 @@ function renderRuleCard(rule, ruleIdx) {
     <span class="trg-rule-summary">${summary}</span>
     <button class="trg-btn-icon trg-rule-dev${rule.devMode ? ' trg-dev-on' : ''}" title="Dev mode — logs full rule execution to console">DEV</button>
     <button class="trg-btn-icon trg-rule-export" title="Export rule as JSON"><i class="fa-solid fa-file-export"></i></button>
+    <button class="trg-btn-icon trg-rule-clone" title="Clone rule"><i class="fa-solid fa-copy"></i></button>
     <button class="trg-btn-icon trg-rule-collapse" title="Collapse"><i class="fa-solid fa-chevron-down"></i></button>
     <button class="trg-btn-icon trg-rule-delete" title="Delete rule">✕</button>
 </div>`);
@@ -329,6 +330,13 @@ function renderRuleCard(rule, ruleIdx) {
         downloadJson(`triggeryze-${label}.json`, { version: 1, type: 'rule', rule: structuredClone(rule) });
     });
     $hdr.find('.trg-rule-dev').on('click', function () { rule.devMode = !rule.devMode; $(this).toggleClass('trg-dev-on'); save(); });
+    $hdr.find('.trg-rule-clone').on('click', () => {
+        const clone = structuredClone(rule);
+        clone.id = makeId();
+        clone.name = (clone.name || `Rule ${ruleIdx + 1}`) + ' (copy)';
+        s.rules.splice(ruleIdx + 1, 0, clone);
+        rebuild();
+    });
     $hdr.find('.trg-rule-delete').on('click', () => { s.rules.splice(ruleIdx, 1); rebuild(); });
     $hdr.find('.trg-rule-collapse').on('click', () => {
         $card.toggleClass('trg-collapsed');
@@ -542,7 +550,7 @@ async function addSettingsPanel() {
         .trg-add-btn         { background:transparent; border:1px solid var(--border-color-light, #444); border-radius:4px; font-size:.85em; padding:3px 10px; white-space:nowrap; cursor:pointer; transition:border-color .15s; }
         .trg-add-btn:hover   { border-color:var(--SmartThemeQuoteColor, #aaa); }
         .trg-picker          { font-size:.85em; }
-        .trg-btn-icon        { background:none; border:none; cursor:pointer; opacity:.5; padding:0 4px; font-size:.9em; }
+        .trg-btn-icon        { background:none; border:none; cursor:pointer; opacity:.5; padding:0 4px; font-size:1.0em; }
         .trg-btn-icon:hover  { opacity:1; }
         .trg-rule-dev        { font-size:.7em; font-weight:700; letter-spacing:.05em; }
         .trg-rule-dev.trg-dev-on { opacity:1; color:#f0a500; }

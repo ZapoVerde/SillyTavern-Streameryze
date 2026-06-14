@@ -169,6 +169,22 @@ A rule pairs one or more triggers with one or more actions. When the AI generate
 
 Rules are evaluated in list order. Each rule fires at most once per stage per turn.
 
+### Rule header controls
+
+Each rule header exposes a row of controls:
+
+| Control | Action |
+|---|---|
+| Checkbox | Enable or disable the rule without deleting it |
+| Name field | Edit the rule's display name |
+| DEV | Toggle dev mode for this rule — see [Dev mode](#dev-mode) |
+| Export | Download the rule as a JSON file |
+| Clone | Duplicate the rule and insert the copy immediately below |
+| Collapse (chevron) | Collapse or expand the rule body |
+| ✕ | Delete the rule |
+
+The clone button creates an independent copy with a fresh ID. The copy's name gets " (copy)" appended. It behaves identically to any manually created rule and can be edited, moved, or deleted without affecting the original.
+
 ---
 
 ## Triggers
@@ -405,6 +421,8 @@ Available in every template field, in every action:
 | `{{char}}` | Character name |
 | `{{user}}` | User name |
 | `{{getLBcontent keyword}}` | Lorebook entry matching the trigger keyword — see [Lorebook lookup in templates](#lorebook-lookup-in-templates) |
+| `{{getLBcontent highlighted}}` | Lorebook entry matching the selected text from a badge button click |
+| `{{getLBcontent myVar}}` | Lorebook entry matching the value of rule variable `myVar` |
 | `{{getLBcontent [Entry Name]}}` | Lorebook entry by literal title |
 | `{{highlighted}}` | Text selected in the browser when a badge button was clicked; empty string for all other trigger types |
 
@@ -479,9 +497,13 @@ Any template field can embed a lorebook entry's content directly:
 | Form | Looks up |
 |---|---|
 | `keyword` | Entry whose title matches the matched keyword |
-| `[Elara Voss]` | Literal entry name — brackets required for names with spaces |
-| `Elara Voss` | Literal entry name, no brackets needed if single word |
-| `MyLorebook:[Elara Voss]` | Same, scoped to a specific lorebook |
+| `highlighted` | Entry whose title matches the text selected when a badge button was clicked |
+| `myVar` | Entry whose title matches the value of rule variable `myVar` — any variable set by an earlier action can be used |
+| `Elara Voss` | Literal entry name — brackets are optional, even for names with spaces |
+| `[Elara Voss]` | Same; brackets are stripped and the name is used as-is |
+| `MyLorebook:[Elara Voss]` | Literal name scoped to a specific lorebook |
+
+Variable lookup happens after the sentinel check: if the name is not `keyword` or `highlighted`, the resolver checks whether a rule variable with that name exists and uses its value as the entry title. If no variable matches, the name is used literally. Brackets are never required — they exist only to visually distinguish entry names that contain colons, which would otherwise be parsed as lorebook prefixes.
 
 Without a lorebook prefix, all active lorebooks are searched.
 

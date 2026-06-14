@@ -164,7 +164,7 @@ function interpolate(template, vars, ruleVars = {}) {
  *   (elara, voss)
  *   Senior archivist of the Conclave...
  */
-export async function resolveLbTokens(template, matchedKeyword) {
+export async function resolveLbTokens(template, matchedKeyword, highlighted = '', vars = {}) {
     if (!template || !template.includes('{{getLBcontent')) return template;
     const RE = /\{\{getLBcontent\s+(?:([^:{}]+):)?(.+?)\}\}/g;
     const tokens = [...template.matchAll(RE)];
@@ -174,9 +174,10 @@ export async function resolveLbTokens(template, matchedKeyword) {
     for (const m of tokens) {
         const lbName    = m[1]?.trim() || null;
         const rawName   = m[2].trim();
-        const entryName = rawName === 'keyword'                             ? matchedKeyword
-                        : rawName.startsWith('[') && rawName.endsWith(']')  ? rawName.slice(1, -1).trim()
-                        : rawName;
+        const literal   = rawName.startsWith('[') && rawName.endsWith(']') ? rawName.slice(1, -1).trim() : rawName;
+        const entryName = rawName === 'keyword'     ? matchedKeyword
+                        : rawName === 'highlighted' ? highlighted
+                        : (vars?.[literal] ?? literal);
 
         const entry = await getLbEntryByName(entryName, lbName);
         let replacement;
@@ -474,11 +475,11 @@ export const ACTION_REGISTRY = {
         label: 'replace',
         stage: 'postMessage',
         defaultConfig: { replacement: '' },
-        async execute(config, { matchedKeyword, messageId, stCtx, vars }) {
+        async execute(config, { matchedKeyword, messageId, stCtx, vars, highlighted = '' }) {
             const msg = stCtx?.chat?.[messageId];
             if (!msg) return;
             const re                  = new RegExp(matchedKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-            const resolvedReplacement = await resolveLbTokens(config.replacement ?? '', matchedKeyword);
+            const resolvedReplacement = await resolveLbTokens(config.replacement ?? '', matchedKeyword, highlighted, vars);
             const replacement         = interpolate(resolvedReplacement, { keyword: matchedKeyword }, vars ?? {});
             const updated             = msg.mes.replace(re, replacement);
             if (updated === msg.mes) return;
@@ -514,7 +515,7 @@ export const ACTION_REGISTRY = {
         stage: 'postMessage',
         defaultConfig: { prompt: '', profileId: null, outputMode: 'replaceKeyword', callMode: 'once', historyTurns: 0, outputVar: '' },
 
-        async execute(config, { matchedKeyword, messageId, stCtx, ruleId, actionIdx, isCurrentGeneration, vars, debug }) {
+        async execute(config, { matchedKeyword, messageId, stCtx, ruleId, actionIdx, isCurrentGeneration, vars, debug, highlighted = '' }) {
             const msg         = stCtx?.chat?.[messageId];
             const charName    = name2 ?? '';
             const userName    = name1 ?? '';
@@ -524,7 +525,7 @@ export const ACTION_REGISTRY = {
             const historyText = buildHistoryText(stCtx?.chat, messageId, config.historyTurns ?? 0);
             const kwEsc       = matchedKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             const mkRe        = () => new RegExp(kwEsc, 'gi');
-            const resolvedPrompt = await resolveLbTokens(config.prompt ?? '', matchedKeyword);
+            const resolvedPrompt = await resolveLbTokens(config.prompt ?? '', matchedKeyword, highlighted, vars);
 
             const mkPrompt = (paragraph = '', upTo = '') => interpolate(resolvedPrompt, {
                 keyword:   matchedKeyword ?? '',
@@ -728,14 +729,14 @@ export const ACTION_REGISTRY = {
         label: 'compose variable',
         stage: 'postMessage',
         defaultConfig: { outputVar: '', template: '' },
-        async execute(config, { matchedKeyword, messageId, stCtx, vars, debug }) {
+        async execute(config, { matchedKeyword, messageId, stCtx, vars, debug, highlighted = '' }) {
             if (!config.outputVar || !vars) return;
             const msg  = stCtx?.chat?.[messageId];
             const text = msg?.mes ?? '';
             const kwEsc          = (matchedKeyword ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             const firstMatch     = kwEsc ? new RegExp(kwEsc, 'i').exec(text) : null;
             const upTo           = firstMatch ? text.slice(0, firstMatch.index) : '';
-            const resolvedTemplate = await resolveLbTokens(config.template ?? '', matchedKeyword);
+            const resolvedTemplate = await resolveLbTokens(config.template ?? '', matchedKeyword, highlighted, vars);
             const result = interpolate(resolvedTemplate, {
                 keyword: matchedKeyword ?? '',
                 message: text,
@@ -795,7 +796,7 @@ export const ACTION_REGISTRY = {
         stage: ['stream', 'postMessage'],
         defaultConfig: { command: '', outputVar: '' },
 
-        async execute(config, { matchedKeyword, messageId, stCtx, vars, debug }) {
+        async execute(config, { matchedKeyword, messageId, stCtx, vars, debug, highlighted = '' }) {
             const chatIdx    = messageId ?? ((stCtx?.chat?.length ?? 1) - 1);
             const text       = stCtx?.chat?.[chatIdx]?.mes ?? '';
             const kwEsc      = (matchedKeyword ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -805,7 +806,7 @@ export const ACTION_REGISTRY = {
                 ? extractParagraph(text, firstMatch.index).text
                 : '';
 
-            const resolvedCmd = await resolveLbTokens(config.command ?? '', matchedKeyword);
+            const resolvedCmd = await resolveLbTokens(config.command ?? '', matchedKeyword, highlighted, vars);
             const cmd = interpolate(resolvedCmd, {
                 keyword:   matchedKeyword ?? '',
                 message:   text,
@@ -865,7 +866,7 @@ export const ACTION_REGISTRY = {
         stage: 'postMessage',
         defaultConfig: { lorebook: '', title: '', keys: '', content: '', outputVar: '' },
 
-        async execute(config, { matchedKeyword, messageId, stCtx, vars, debug }) {
+        async execute(config, { matchedKeyword, messageId, stCtx, vars, debug, highlighted = '' }) {
             const msg  = stCtx?.chat?.[messageId];
             const text = msg?.mes ?? '';
             const kwEsc      = (matchedKeyword ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -878,10 +879,10 @@ export const ACTION_REGISTRY = {
             }, vars);
 
             const [rLorebook, rTitle, rKeys, rContent] = await Promise.all([
-                resolveLbTokens(config.lorebook ?? '', matchedKeyword),
-                resolveLbTokens(config.title    ?? '', matchedKeyword),
-                resolveLbTokens(config.keys     ?? '', matchedKeyword),
-                resolveLbTokens(config.content  ?? '', matchedKeyword),
+                resolveLbTokens(config.lorebook ?? '', matchedKeyword, highlighted, vars),
+                resolveLbTokens(config.title    ?? '', matchedKeyword, highlighted, vars),
+                resolveLbTokens(config.keys     ?? '', matchedKeyword, highlighted, vars),
+                resolveLbTokens(config.content  ?? '', matchedKeyword, highlighted, vars),
             ]);
 
             const lorebook = interp(rLorebook).trim();
@@ -979,7 +980,7 @@ export const ACTION_REGISTRY = {
         stage: 'postMessage',
         defaultConfig: { source: 'pollinations', model: '', comfyUiUrl: '', prompt: '{{keyword}}', historyTurns: 0, outputVar: '', persist: true },
 
-        async execute(config, { matchedKeyword, messageId, stCtx, isCurrentGeneration, vars }) {
+        async execute(config, { matchedKeyword, messageId, stCtx, isCurrentGeneration, vars, highlighted = '' }) {
             const msg = stCtx?.chat?.[messageId];
             if (!msg) return;
             if (!msg.extra || typeof msg.extra !== 'object') msg.extra = {};
@@ -988,7 +989,7 @@ export const ACTION_REGISTRY = {
             const firstMatch     = kwEsc ? new RegExp(kwEsc, 'i').exec(msg.mes ?? '') : null;
             const upTo           = firstMatch ? (msg.mes ?? '').slice(0, firstMatch.index) : '';
             const historyText    = buildHistoryText(stCtx?.chat, messageId, config.historyTurns ?? 0);
-            const resolvedPrompt = await resolveLbTokens(config.prompt ?? '', matchedKeyword);
+            const resolvedPrompt = await resolveLbTokens(config.prompt ?? '', matchedKeyword, highlighted, vars);
 
             const prompt = interpolate(resolvedPrompt, {
                 keyword:  matchedKeyword ?? '',
