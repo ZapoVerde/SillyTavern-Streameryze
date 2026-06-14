@@ -39,7 +39,8 @@
 import { eventSource, event_types, generateQuietPrompt, name1, name2, addOneMessage, updateMessageBlock, appendMediaToMessage, callPopup } from '../../../../script.js';
 import { ConnectionManagerRequestService } from '../../shared.js';
 import { SOURCE_LABELS, loadModelsForSource, generatePreviewBlob, generateAndUpload } from './imageGen.js';
-import { getLbEntryByName } from './triggers.js';
+import { getLbEntryByName, clearWiCache } from './triggers.js';
+import { lbGetLorebook, lbSaveLorebook } from './lorebookApi.js';
 
 function esc(s) { return $('<span>').text(s ?? '').html(); }
 
@@ -307,6 +308,43 @@ function buildHistoryText(chat, beforeIndex, numPairs) {
     const slice = chat.slice(start, beforeIndex);
     if (!slice.length) return '';
     return slice.map(m => `${m.name ?? 'Unknown'}: ${m.mes ?? ''}`).join('\n\n');
+}
+
+/** Builds a complete ST worldinfo entry object for a new lorebook entry. */
+function makeLbEntry(uid, comment, keys, content) {
+    return {
+        uid, comment, content,
+        key:              keys,
+        keysecondary:     [],
+        constant:         false,
+        vectorized:       false,
+        selective:        true,
+        selectiveLogic:   0,
+        addMemo:          true,
+        order:            100,
+        position:         0,
+        disable:          false,
+        ignoreBudget:     false,
+        excludeRecursion: false,
+        preventRecursion: false,
+        probability:      100,
+        useProbability:   true,
+        depth:            4,
+        group:            '',
+        groupOverride:    false,
+        groupWeight:      100,
+        scanDepth:        null,
+        caseSensitive:    null,
+        matchWholeWords:  null,
+        useGroupScoring:  null,
+        automationId:     '',
+        role:             0,
+        sticky:           null,
+        cooldown:         null,
+        delay:            null,
+        displayIndex:     uid,
+        triggers:         [],
+    };
 }
 
 /** Returns { text, start, end } of the newline-bounded paragraph at matchIndex. */
@@ -819,6 +857,120 @@ export const ACTION_REGISTRY = {
                 command:   $el.find('.trg-slashcmd-cmd').val(),
             });
             $el.find('.trg-slashcmd-outvar, .trg-slashcmd-cmd').on('input', update);
+        },
+    },
+
+    lbWrite: {
+        label: 'lorebook entry',
+        stage: 'postMessage',
+        defaultConfig: { lorebook: '', title: '', keys: '', content: '', outputVar: '' },
+
+        async execute(config, { matchedKeyword, messageId, stCtx, vars, debug }) {
+            const msg  = stCtx?.chat?.[messageId];
+            const text = msg?.mes ?? '';
+            const kwEsc      = (matchedKeyword ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const firstMatch = kwEsc ? new RegExp(kwEsc, 'i').exec(text) : null;
+            const upTo       = firstMatch ? text.slice(0, firstMatch.index) : '';
+            const paragraph  = firstMatch ? extractParagraph(text, firstMatch.index).text : '';
+            const interp = (t) => interpolate(t, {
+                keyword: matchedKeyword ?? '', message: text,
+                'up-to': upTo, paragraph, char: name2 ?? '', user: name1 ?? '',
+            }, vars);
+
+            const [rLorebook, rTitle, rKeys, rContent] = await Promise.all([
+                resolveLbTokens(config.lorebook ?? '', matchedKeyword),
+                resolveLbTokens(config.title    ?? '', matchedKeyword),
+                resolveLbTokens(config.keys     ?? '', matchedKeyword),
+                resolveLbTokens(config.content  ?? '', matchedKeyword),
+            ]);
+
+            const lorebook = interp(rLorebook).trim();
+            const title    = interp(rTitle).trim();
+            const keys     = interp(rKeys).split(',').map(k => k.trim()).filter(Boolean);
+            const content  = interp(rContent);
+
+            if (!lorebook || !title) {
+                console.error('[triggeryze] lbWrite: lorebook and title are required');
+                return;
+            }
+
+            const lbData  = await lbGetLorebook(lorebook);
+            const entries = lbData.entries ?? {};
+
+            const existingUid = Object.keys(entries).find(
+                uid => (entries[uid].comment ?? '').toLowerCase() === title.toLowerCase()
+            );
+
+            if (existingUid !== undefined) {
+                entries[existingUid].content = content;
+                if (keys.length) {
+                    const seen = new Set((entries[existingUid].key ?? []).map(k => k.toLowerCase()));
+                    for (const k of keys) {
+                        if (!seen.has(k.toLowerCase())) entries[existingUid].key.push(k);
+                    }
+                }
+                if (debug) console.log(`[TRG:dev]   lbWrite: updated "${title}" in "${lorebook}"`);
+            } else {
+                const uid = Object.keys(entries).length
+                    ? Math.max(...Object.keys(entries).map(Number)) + 1
+                    : 0;
+                entries[String(uid)] = makeLbEntry(uid, title, keys, content);
+                if (debug) console.log(`[TRG:dev]   lbWrite: created "${title}" in "${lorebook}" (uid ${uid})`);
+            }
+
+            lbData.entries = entries;
+            await lbSaveLorebook(lorebook, lbData);
+            clearWiCache();
+
+            if (config.outputVar && vars) vars[config.outputVar] = title;
+        },
+
+        renderConfig($el, config, onChange, ctx) {
+            $el.html(`
+<div class="trg-sc-wrap">
+    <div class="trg-sc-row">
+        <label class="trg-sc-lbl">lorebook</label>
+        <input type="text" class="text_pole trg-cfg trg-lb-lorebook" placeholder="lorebook name" value="${esc(config.lorebook ?? '')}" style="flex:1" />
+    </div>
+    <div class="trg-sc-row">
+        <label class="trg-sc-lbl">title</label>
+        <input type="text" class="text_pole trg-cfg trg-lb-title" placeholder="entry title — {{keyword}}, {{myVar}}, ..." value="${esc(config.title ?? '')}" style="flex:1" />
+    </div>
+    <div class="trg-sc-row">
+        <label class="trg-sc-lbl">keys</label>
+        <input type="text" class="text_pole trg-cfg trg-lb-keys" placeholder="comma-separated trigger keys (optional)" value="${esc(config.keys ?? '')}" style="flex:1" />
+    </div>
+    <div class="trg-sc-row">
+        <label class="trg-sc-lbl">save as</label>
+        <input type="text" class="trg-cfg trg-lb-outvar trg-outvar-field" placeholder="variable name (optional)" value="${esc(config.outputVar ?? '')}" style="flex:1" />
+    </div>
+    ${renderVarLegend(ctx?.priorActions)}
+    <textarea class="text_pole trg-cfg trg-lb-content" rows="5"
+        placeholder="Entry content — {{keyword}} {{message}} {{myVar}} {{getLBcontent [Entry Name]}}">${esc(config.content ?? '')}</textarea>
+    <small class="trg-hint">Updates the entry if the title exists; creates it otherwise. Keys are merged on update, not replaced.</small>
+</div>`);
+
+            $el.on('click', '.trg-var-inject', function () {
+                const token = $(this).data('token');
+                const $ta   = $el.find('.trg-lb-content');
+                const el    = $ta[0];
+                if (!el) return;
+                const s = el.selectionStart ?? el.value.length, e = el.selectionEnd ?? s;
+                el.value = el.value.slice(0, s) + token + el.value.slice(e);
+                el.selectionStart = el.selectionEnd = s + token.length;
+                $ta.trigger('input');
+                el.focus();
+            });
+
+            const update = () => onChange({
+                ...config,
+                lorebook:  $el.find('.trg-lb-lorebook').val().trim(),
+                title:     $el.find('.trg-lb-title').val(),
+                keys:      $el.find('.trg-lb-keys').val(),
+                content:   $el.find('.trg-lb-content').val(),
+                outputVar: $el.find('.trg-lb-outvar').val().trim(),
+            });
+            $el.find('.trg-lb-lorebook, .trg-lb-title, .trg-lb-keys, .trg-lb-content, .trg-lb-outvar').on('input', update);
         },
     },
 
