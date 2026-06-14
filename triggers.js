@@ -40,6 +40,24 @@ export function setChatComplete(value) {
     _chatComplete = value;
 }
 
+// Turn-level variable store. Populated by engine.js when an action writes to outputVar.
+// Cleared on GENERATION_STARTED. Read by the varMatch trigger.
+const _turnVars = new Map();
+
+export function setTurnVar(name, value) { _turnVars.set(name, value); }
+export function getTurnVar(name)        { return _turnVars.get(name); }
+export function clearTurnVars()         { _turnVars.clear(); }
+
+function updateVarPreview($el, varName) {
+    const $p = $el.find('.trg-var-preview');
+    if (!varName) { $p.hide().empty(); return; }
+    if (!_turnVars.has(varName)) {
+        $p.html(`<span class="trg-prev-unset">"${esc(varName)}" not set this turn</span>`).show();
+    } else {
+        $p.html(`current: <span class="trg-prev-kw">${esc(String(_turnVars.get(varName)))}</span>`).show();
+    }
+}
+
 async function getWiKeywords() {
     if (_wiCache) return _wiCache;
     const entries = await getSortedEntries();
@@ -246,6 +264,63 @@ export const TRIGGER_REGISTRY = {
         },
         renderConfig($el) {
             $el.html('<small class="trg-hint">Fires once after each fully received message. Pair with postMessage actions (call LLM, replace, generate image).</small>');
+        },
+    },
+
+    varMatch: {
+        label: 'variable match',
+        defaultConfig: { varName: '', operator: 'equals', value: '' },
+        async test(_text, config) {
+            const name = (config.varName ?? '').trim();
+            if (!name) return null;
+            if (!_turnVars.has(name)) {
+                console.warn(`[triggeryze] varMatch: "${name}" not set this turn`);
+                return null;
+            }
+            const actual = String(_turnVars.get(name) ?? '');
+            const op     = config.operator ?? 'equals';
+            const target = config.value ?? '';
+            let hits = false;
+            if (op === 'equals')   hits = actual === target;
+            if (op === 'contains') hits = actual.toLowerCase().includes(target.toLowerCase());
+            if (op === 'matches')  { try { hits = new RegExp(target, 'i').test(actual); } catch { hits = false; } }
+            if (op === 'notEmpty') hits = actual.trim() !== '';
+            return hits ? actual : null;
+        },
+        renderConfig($el, config, onChange) {
+            $el.html(`
+<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+    <input type="text" class="text_pole trg-cfg trg-vm-name" placeholder="variable name" value="${esc(config.varName ?? '')}" style="flex:1;min-width:80px" />
+    <select class="trg-cfg trg-vm-op" style="flex:0 0 auto">
+        <option value="equals"   ${config.operator === 'equals'   ? 'selected' : ''}>equals</option>
+        <option value="contains" ${config.operator === 'contains' ? 'selected' : ''}>contains</option>
+        <option value="matches"  ${config.operator === 'matches'  ? 'selected' : ''}>matches regex</option>
+        <option value="notEmpty" ${config.operator === 'notEmpty' ? 'selected' : ''}>not empty</option>
+    </select>
+    <input type="text" class="text_pole trg-cfg trg-vm-value" placeholder="value"
+        value="${esc(config.value ?? '')}"
+        style="flex:1;min-width:80px;${config.operator === 'notEmpty' ? 'display:none' : ''}" />
+</div>
+<div class="trg-var-preview" style="display:none;margin-top:3px;font-size:.82em;opacity:.8;"></div>`);
+
+            const $name  = $el.find('.trg-vm-name');
+            const $op    = $el.find('.trg-vm-op');
+            const $value = $el.find('.trg-vm-value');
+
+            updateVarPreview($el, config.varName ?? '');
+
+            $name.on('input', function () {
+                onChange({ ...config, varName: this.value });
+                updateVarPreview($el, this.value.trim());
+            });
+            $op.on('change', function () {
+                const op = this.value;
+                $value.toggle(op !== 'notEmpty');
+                onChange({ ...config, operator: op });
+            });
+            $value.on('input', function () {
+                onChange({ ...config, value: this.value });
+            });
         },
     },
 

@@ -382,6 +382,8 @@ function renderRuleCard(rule, ruleIdx) {
             () => { rule.actions.splice(aidx, 1); rebuild(); },
             { priorActions: rule.actions.slice(0, aidx) }
         );
+        // Refresh all legends when a Save-as name is committed (blur, not every keystroke).
+        $row.on('focusout', '.trg-outvar-field', () => rebuild());
         $actions.append($row);
     });
     $do.append($actions);
@@ -574,6 +576,8 @@ async function addSettingsPanel() {
         .trg-kw-preview em   { font-style:normal; opacity:.9; }
         .trg-prev-kw         { font-family:monospace; background:rgba(255,255,255,.08); border-radius:3px; padding:0 4px; }
         .trg-prev-re         { opacity:.45; font-family:monospace; font-size:.9em; }
+        .trg-var-preview     { font-size:.82em; opacity:.8; margin-top:3px; }
+        .trg-prev-unset      { opacity:.45; font-style:italic; }
         .trg-kw-footer       { display:flex; align-items:center; gap:8px; margin-top:3px; }
         .trg-help-toggle     { font-size:.75em; opacity:.45; cursor:pointer; border:1px solid currentColor; border-radius:50%; padding:0 4px; line-height:1.6; transition:opacity .15s; }
         .trg-help-toggle:hover, .trg-help-open { opacity:.9 !important; }

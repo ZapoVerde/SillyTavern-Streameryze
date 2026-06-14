@@ -43,7 +43,7 @@
 
 import { messageFormatting }     from '../../../../script.js';
 import { extension_settings }   from '../../../extensions.js';
-import { TRIGGER_REGISTRY, clearWiCache, setChatComplete } from './triggers.js';
+import { TRIGGER_REGISTRY, clearWiCache, setChatComplete, setTurnVar, clearTurnVars } from './triggers.js';
 import { ACTION_REGISTRY, clearPrefetchCache, prefetchSideCall, getPrefetchedResults, isDispatchActive, resolveLbTokens } from './actions.js';
 import { ensureBadge, setBadge } from './badge.js';
 
@@ -236,8 +236,12 @@ async function executeActions(rule, stage, execCtx) {
             console.error(`[${EXT_NAME}] action ${a.type} threw`, err);
         } finally {
             if (debug) console.log(`[TRG:dev]   [${idx}] ${a.type} done | vars:`, { ...vars });
-            // Always resolve so downstream actions are never permanently blocked by an upstream failure.
-            if (a.config?.outputVar) varReady.get(a.config.outputVar)?.resolve();
+            if (a.config?.outputVar) {
+                // Publish to turn-level store so subsequent rules' varMatch triggers can read it.
+                if (a.config.outputVar in vars) setTurnVar(a.config.outputVar, vars[a.config.outputVar]);
+                // Always resolve so downstream actions are never permanently blocked by an upstream failure.
+                varReady.get(a.config.outputVar)?.resolve();
+            }
         }
     };
 
@@ -446,6 +450,7 @@ export function onGenerationStarted() {
     _liveResults.clear();
     clearPrefetchCache();
     clearWiCache();
+    clearTurnVars();
     setChatComplete(false);
     const stCtx = window.SillyTavern?.getContext?.();
     const lastId = (stCtx?.chat?.length ?? 0) - 1;

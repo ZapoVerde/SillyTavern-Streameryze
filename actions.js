@@ -645,7 +645,7 @@ export const ACTION_REGISTRY = {
     </div>
     <div class="trg-sc-row">
         <label class="trg-sc-lbl">save as</label>
-        <input type="text" class="trg-cfg trg-sc-outvar" placeholder="variable name (optional)" value="${esc(config.outputVar ?? '')}" style="flex:1" />
+        <input type="text" class="trg-cfg trg-sc-outvar trg-outvar-field" placeholder="variable name (optional)" value="${esc(config.outputVar ?? '')}" style="flex:1" />
     </div>
     <div class="trg-sc-row">
         <label class="trg-sc-lbl">history</label>
@@ -712,7 +712,7 @@ export const ACTION_REGISTRY = {
 <div class="trg-sc-wrap">
     <div class="trg-sc-row">
         <label class="trg-sc-lbl">name</label>
-        <input type="text" class="trg-cfg trg-cv-name" placeholder="variable name" value="${esc(config.outputVar ?? '')}" style="flex:1" />
+        <input type="text" class="trg-cfg trg-cv-name trg-outvar-field" placeholder="variable name" value="${esc(config.outputVar ?? '')}" style="flex:1" />
     </div>
     ${renderVarLegend(ctx?.priorActions)}
     <textarea class="text_pole trg-cfg trg-cv-template" rows="3"
@@ -854,7 +854,7 @@ export const ACTION_REGISTRY = {
     </div>
     <div class="trg-sc-row">
         <label class="trg-sc-lbl">save as</label>
-        <input type="text" class="trg-ig-outvar text_pole" placeholder="variable name (optional)" value="${esc(config.outputVar ?? '')}" style="flex:1" />
+        <input type="text" class="trg-ig-outvar text_pole trg-outvar-field" placeholder="variable name (optional)" value="${esc(config.outputVar ?? '')}" style="flex:1" />
     </div>
     ${renderVarLegend(ctx?.priorActions)}
     <textarea class="trg-ig-prompt text_pole" rows="2"
