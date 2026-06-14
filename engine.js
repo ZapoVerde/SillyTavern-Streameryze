@@ -184,8 +184,12 @@ async function evaluateTriggers(rule, text) {
 // Action execution
 // ---------------------------------------------------------------------------
 
+function stageMatches(defStage, queryStage) {
+    return Array.isArray(defStage) ? defStage.includes(queryStage) : defStage === queryStage;
+}
+
 function ruleHasStage(rule, stage) {
-    return rule.actions?.some(a => ACTION_REGISTRY[a.type]?.stage === stage);
+    return rule.actions?.some(a => stageMatches(ACTION_REGISTRY[a.type]?.stage, stage));
 }
 
 // Returns the subset of knownVars referenced as {{varName}} in any string config field.
@@ -198,7 +202,7 @@ function getVarDeps(config, knownVars) {
 async function executeActions(rule, stage, execCtx) {
     const stageActions = (rule.actions ?? [])
         .map((a, idx) => ({ a, idx }))
-        .filter(({ a }) => ACTION_REGISTRY[a.type]?.stage === stage);
+        .filter(({ a }) => stageMatches(ACTION_REGISTRY[a.type]?.stage, stage));
     if (!stageActions.length) return;
 
     const capturedGenId = _generationId;

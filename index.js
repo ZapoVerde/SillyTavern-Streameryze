@@ -575,6 +575,7 @@ async function addSettingsPanel() {
         .trg-rule-badge:active { transform:translateY(0); }
         .trg-check-row       { display:inline-flex; align-items:center; gap:5px; font-size:.8em; opacity:.65; cursor:pointer; }
         .trg-check-row input { width:auto !important; cursor:pointer; }
+        .trg-hint-warn       { color:rgba(255,190,80,.85); border-left-color:rgba(255,190,80,.4) !important; }
         .trg-kw-preview      { font-size:.78em; opacity:.7; margin-top:4px; line-height:1.7; padding:4px 7px; border-left:2px solid rgba(255,255,255,.15); }
         .trg-kw-preview em   { font-style:normal; opacity:.9; }
         .trg-prev-kw         { font-family:monospace; background:rgba(255,255,255,.08); border-radius:3px; padding:0 4px; }
