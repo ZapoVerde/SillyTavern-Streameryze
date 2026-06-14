@@ -472,6 +472,15 @@ async function addSettingsPanel() {
             <tr><td><span class="trg-help-eg">{{myVar}}</span></td><td>any variable set by a prior <i>compose variable</i> action in this rule</td></tr>
         </table>
 
+        <div class="trg-ref-section">Lorebook lookup — <span class="trg-help-eg">{{getLBcontent ...}}</span></div>
+        <p>Embeds a lorebook entry by title. Resolved before variable substitution.</p>
+        <table class="trg-ref-table">
+            <tr><td><span class="trg-help-eg">{{getLBcontent keyword}}</span></td><td>entry whose title matches the trigger keyword</td></tr>
+            <tr><td><span class="trg-help-eg">{{getLBcontent [Entry Name]}}</span></td><td>literal entry title — brackets required for names with spaces</td></tr>
+            <tr><td><span class="trg-help-eg">{{getLBcontent LB:[Entry Name]}}</span></td><td>same, scoped to a specific lorebook</td></tr>
+        </table>
+        <p style="opacity:.6;font-size:.9em">Output: <span class="trg-help-eg">Title:\n(keys)\ncontent</span> — on miss, logs to console and inserts nothing.</p>
+
         <div class="trg-ref-section">Conditional blocks</div>
         <div class="trg-help-eg trg-ref-block">{{if condition}}body{{/if}}</div>
         <p>Condition uses bare variable names — no <span class="trg-help-eg">{{}}</span> around them. Body may contain <span class="trg-help-eg">{{variable}}</span> substitutions. Blocks can be stacked but not nested.</p>

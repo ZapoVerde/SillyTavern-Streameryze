@@ -175,6 +175,8 @@ Available in every template field, in every action:
 | `{{history}}` | Recent chat history, N turns (configured per action) |
 | `{{char}}` | Character name |
 | `{{user}}` | User name |
+| `{{getLBcontent keyword}}` | Lorebook entry matching the trigger keyword — see [Lorebook lookup in templates](#lorebook-lookup-in-templates) |
+| `{{getLBcontent [Entry Name]}}` | Lorebook entry by literal title |
 
 ### Rule variables
 
