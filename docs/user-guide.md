@@ -51,6 +51,36 @@ Designed for postMessage-stage actions (call LLM, replace, generate image). Pair
 
 `{{keyword}}` is set to `chat complete` when this trigger fires, though it is rarely needed in templates.
 
+### Variable match
+
+Fires when a named variable matches a condition. The variable must have been set by an action in an earlier rule during the same turn.
+
+Configure a variable name, an operator, and a value to compare against:
+
+| Operator | Fires when |
+|---|---|
+| equals | The variable's value is exactly the target string |
+| contains | The variable's value contains the target string (case-insensitive) |
+| matches regex | The variable's value matches the regular expression |
+| not empty | The variable has any non-blank value |
+
+The preview below the config shows the variable's current value from the last turn, so you can verify the upstream rule is producing what you expect.
+
+If the variable has not been set this turn, the trigger does not fire and a warning is written to the browser console.
+
+`{{keyword}}` is set to the variable's actual value when this trigger fires.
+
+### Badge button
+
+Adds a labeled, colored button next to the status badge on every AI message. The button does not fire during normal rule evaluation — it only fires when clicked.
+
+**Label** — the text shown on the button.
+**Color** — the button's accent color, applied to the border, background tint, and text.
+
+`{{keyword}}` is set to the label text when the button is clicked.
+
+Use badge buttons for rules you want to run on demand rather than automatically: re-running an enrichment call on an older message, manually regenerating an image, or triggering a one-off classification.
+
 ### Combining triggers
 
 When a rule has multiple triggers, the **any / all** selector at the top of the WHEN section controls how they combine:
@@ -128,9 +158,9 @@ Fires an LLM request when the rule matches and applies the result to the message
 
 **Stage: postMessage**
 
-Builds a named variable from a template without making any LLM call. The variable is available to all later actions in the same rule.
+Builds a named variable from a template without making any LLM call. The variable is available to all later actions in the same rule and is also published turn-wide, so a variable match trigger in a later rule can test it.
 
-Use compose variable to classify or reshape the matched keyword before feeding it to a call LLM action — for example, mapping a keyword to a category label, or combining several variables into a single prompt string.
+Use compose variable to classify or reshape the matched keyword before feeding it to a call LLM action — for example, mapping a keyword to a category label, or routing subsequent rules based on what the AI wrote.
 
 The template supports the same variables and conditional blocks as all other template fields. See [Variables and templates](#variables-and-templates).
 
@@ -180,9 +210,13 @@ Available in every template field, in every action:
 
 ### Rule variables
 
-Set by a compose variable or call LLM action (via the **Save as** field). Available to every action that follows in the same rule.
+Set by a compose variable or call LLM action (via the **Save as** field). Available to every action that follows in the same rule. They are also published turn-wide: a variable match trigger in a later rule can test the value set here.
 
-To use one: set `Save as` to a name like `label` in the earlier action, then reference it as `{{label}}` in a later action's template.
+To use one within a rule: set `Save as` to a name like `label` in the earlier action, then reference it as `{{label}}` in a later action's template.
+
+To use one across rules: add a variable match trigger to the later rule and enter the same name. Triggeryze's stability loop re-evaluates rules after each firing, so rule A sets the variable in pass one and rule B's trigger sees it in pass two.
+
+Turn-level variables are cleared at the start of each new generation.
 
 ### Action ordering and dependencies
 
@@ -264,6 +298,7 @@ Triggeryze operates at two distinct stages of the generation lifecycle:
 |---|---|---|
 | **stream** | As each token arrives, before the message is committed | stop, stop + continue |
 | **postMessage** | After the full message is saved | replace, call LLM, compose variable, generate image |
+| **manual** | When a badge button is clicked | all postMessage actions |
 
 A rule can have actions at both stages. They fire at different moments in the same generation. A common pattern: a stop rule halts the stream on a sentinel keyword; a replace rule on the same keyword removes it from the saved message.
 
@@ -296,7 +331,7 @@ Switching profiles replaces the live rules with that profile's snapshot. Unsaved
 
 ## Status badges
 
-A small pill appears below each AI message:
+A small pill appears below each AI message showing rule processing state:
 
 | Badge | Meaning |
 |---|---|
@@ -304,7 +339,9 @@ A small pill appears below each AI message:
 | Red pulse | A rule action is currently running |
 | Green | At least one rule modified this message |
 
-Clicking a badge reruns all postMessage rules against that message using the current rule list. Use this to test rule changes or retry a failed action without sending a new message.
+Clicking the status pill reruns all postMessage rules against that message using the current rule list. Use this to test rule changes or retry a failed action without sending a new message.
+
+If any rule uses the **badge button** trigger, additional labeled buttons appear next to the status pill — one per rule. Clicking a labeled button fires only that specific rule against the message.
 
 ---
 
@@ -336,3 +373,9 @@ When a call LLM action runs, SillyTavern's generation state is briefly active ag
 
 **Chat complete and stream-stage actions**
 The chat complete trigger only becomes true after the message is committed. Pairing it with stop or stop + continue has no effect — those actions require an active stream, which no longer exists at that point.
+
+**Variable match with no upstream rule**
+If a variable match trigger names a variable that was never set this turn, the trigger does not fire and a warning is written to the browser console. Check that the upstream rule is enabled, fires before the variable match rule in the list, and has its Save as field filled in with the matching name.
+
+**Badge trigger and AND logic**
+A badge trigger combined with other triggers using AND prevents the rule from auto-firing. The badge trigger's condition always evaluates to false during automatic rule scanning. Use OR logic if you want a rule that fires both automatically on a keyword match and manually on button click.

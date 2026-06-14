@@ -16,6 +16,10 @@ Triggeryze watches the AI's response and fires actions when keywords appear. It 
 
 **Composable actions.** Stack actions in a single rule and pipe the output of one into the prompt of the next.
 
+**On-demand buttons.** Attach a labeled button to any AI message. Click it to run a specific rule against that message whenever you want, independent of what the AI wrote.
+
+**Cross-rule chaining.** A variable set by one rule can drive trigger conditions in the next — build multi-step decision trees across rules within the same turn.
+
 ---
 
 ## Installation
