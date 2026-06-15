@@ -35,7 +35,7 @@
 import { eventSource, event_types, saveSettingsDebounced, callPopup } from '../../../../script.js';
 import { extension_settings }                               from '../../../extensions.js';
 import { TRIGGER_REGISTRY }                                 from './triggers.js';
-import { ACTION_REGISTRY }                                  from './actions.js';
+import { ACTION_REGISTRY, makeActionCtx }                   from './actions/index.js';
 import { onGenerationStarted, onStreamToken, onMessageReceived, fireRuleManually, reinjectRuleBadges } from './engine.js';
 import { ensureBadge, setBadge, reinjectAllBadges, removeAllBadges } from './badge.js';
 
@@ -461,7 +461,7 @@ function renderRuleCard(rule, ruleIdx) {
             ACTION_REGISTRY,
             (newConfig) => { rule.actions[aidx].config = newConfig; save(); },   // config-only, no rebuild
             () => { rule.actions.splice(aidx, 1); rebuild(); },
-            { priorActions: rule.actions.slice(0, aidx) }
+            makeActionCtx(rule, aidx)
         );
         // Refresh all legends when a Save-as name is committed (blur, not every keystroke).
         $row.on('focusout', '.trg-outvar-field', () => rebuild());

@@ -44,7 +44,7 @@
 import { messageFormatting }     from '../../../../script.js';
 import { extension_settings }   from '../../../extensions.js';
 import { TRIGGER_REGISTRY, clearWiCache, setChatComplete, setTurnVar, getTurnVar, clearTurnVars } from './triggers.js';
-import { ACTION_REGISTRY, clearPrefetchCache, prefetchSideCall, getPrefetchedResults, isDispatchActive, resolveLbTokens, interpolate, getTemplateTier } from './actions.js';
+import { ACTION_REGISTRY, clearPrefetchCache, prefetchSideCall, getPrefetchedResults, isDispatchActive, resolveLbTokens, interpolate, getTemplateTier } from './actions/index.js';
 import { ensureBadge, setBadge, renderRuleBadges } from './badge.js';
 
 const EXT_NAME = 'triggeryze';
