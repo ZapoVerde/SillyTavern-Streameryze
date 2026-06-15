@@ -24,6 +24,7 @@
  */
 
 import { getSortedEntries, parseRegexFromString, world_info_case_sensitive } from '../../../../scripts/world-info.js';
+import { getLocalVariable, getGlobalVariable }                               from '../../../../scripts/variables.js';
 
 // Lorebook keyword cache. One build per generation, cleared on GENERATION_STARTED.
 let _wiCache     = null;
@@ -172,7 +173,10 @@ export async function resolveLbQueryTokens(template, vars = {}) {
 // Unresolved tokens → empty string at evaluation time (produces no match).
 function _expandKwVars(str, snapshot) {
     return str.replace(/\{\{([^{}]+)\}\}/g, (_, k) => {
-        const v = snapshot[k.trim()];
+        k = k.trim();
+        if (k.startsWith('chatvar::'))   return String(getLocalVariable(k.slice(9))   ?? '');
+        if (k.startsWith('globalvar::')) return String(getGlobalVariable(k.slice(12)) ?? '');
+        const v = snapshot[k];
         return v !== undefined ? String(v) : '';
     });
 }
@@ -180,7 +184,10 @@ function _expandKwVars(str, snapshot) {
 // Same as above but keeps unresolved tokens as-is (for preview display).
 function _expandKwVarsForPreview(str, snapshot) {
     return str.replace(/\{\{([^{}]+)\}\}/g, (match, k) => {
-        const v = snapshot[k.trim()];
+        k = k.trim();
+        if (k.startsWith('chatvar::'))   return String(getLocalVariable(k.slice(9))   ?? match);
+        if (k.startsWith('globalvar::')) return String(getGlobalVariable(k.slice(12)) ?? match);
+        const v = snapshot[k];
         return v !== undefined ? String(v) : match;
     });
 }

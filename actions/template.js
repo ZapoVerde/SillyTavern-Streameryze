@@ -20,6 +20,7 @@
  */
 
 import { getLbEntryByName, resolveLbQueryTokens, getTurnVarsSnapshot } from '../triggers.js';
+import { getLocalVariable, getGlobalVariable }                         from '../../../../../scripts/variables.js';
 
 // ---------------------------------------------------------------------------
 // Template condition evaluator — used by {{#if}} blocks in compose variable
@@ -88,6 +89,10 @@ export function interpolate(template, vars, ruleVars = {}) {
         /\{\{if\s+([\s\S]*?)\}\}([\s\S]*?)\{\{\/if\}\}/g,
         (_, cond, body) => _evalCondition(cond, lookup) ? body : '',
     );
+
+    // {{chatvar::name}} / {{globalvar::name}} — ST persistent variables
+    out = out.replace(/\{\{chatvar::([^{}]+)\}\}/g,   (_, n) => String(getLocalVariable(n.trim())  ?? ''));
+    out = out.replace(/\{\{globalvar::([^{}]+)\}\}/g, (_, n) => String(getGlobalVariable(n.trim()) ?? ''));
 
     // {{varName}} — simple substitution
     return out.replace(/\{\{([^{}]+)\}\}/g, (_, key) => lookup(key.trim()));
