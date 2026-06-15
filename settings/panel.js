@@ -94,6 +94,15 @@ export async function addSettingsPanel() {
                 <tr><td><span class="trg-help-eg">{{highlighted}}</span></td><td>text selected when a badge button was clicked</td></tr>
             </table>
             <p style="margin-top:6px;opacity:.6;font-size:.9em">Rule variables (amber chips) are set by a prior action's <em>Save as</em> field. Cross-rule variables (purple chips) are set by an action in another rule that fired this turn. Both clear at the start of each generation.</p>
+            <p style="margin-top:6px;margin-bottom:2px;font-weight:bold;opacity:.7">Math</p>
+            <div class="trg-help-eg trg-ref-block">{{math: expr }}</div>
+            <p>Evaluates arithmetic after all variable substitution. Combine with ST variable reads to compute new values.</p>
+            <table class="trg-ref-table">
+                <tr><td><span class="trg-help-eg">{{math: {{chatvar::hp}} - 15 }}</span></td><td>subtract 15 from chat variable hp</td></tr>
+                <tr><td><span class="trg-help-eg">{{math: {{score}} * 2 + 10 }}</span></td><td>double a rule variable and add 10</td></tr>
+                <tr><td><span class="trg-help-eg">{{math: {{chatvar::stats.gold}} / 4 }}</span></td><td>divide an object property</td></tr>
+            </table>
+            <p style="opacity:.6;font-size:.9em">Operators: <span class="trg-help-eg">+ - * / % **</span> and parentheses. Returns empty string on invalid input.</p>
         </div>
         </div>
 
@@ -145,6 +154,15 @@ export async function addSettingsPanel() {
                 <tr><td><span class="trg-help-eg">name in (a, b, c)</span></td><td>true if value equals any item in the list</td></tr>
                 <tr><td><span class="trg-help-eg">name empty</span></td><td>true if variable is empty or unset</td></tr>
             </table>
+            <p style="margin-top:4px;margin-bottom:2px"><strong>Numeric comparisons</strong> — use bare variable names or <span class="trg-help-eg">chatvar::name</span> / <span class="trg-help-eg">globalvar::name</span> (with optional <span class="trg-help-eg">.key</span> or <span class="trg-help-eg">[key]</span>):</p>
+            <table class="trg-ref-table" style="margin-bottom:4px">
+                <tr><td><span class="trg-help-eg">name &gt; 10</span></td><td><span class="trg-help-eg">name &lt; 10</span></td><td><span class="trg-help-eg">name &gt;= 10</span></td><td><span class="trg-help-eg">name &lt;= 10</span></td></tr>
+            </table>
+            <table class="trg-ref-table" style="margin-bottom:6px">
+                <tr><td><span class="trg-help-eg">{{if chatvar::hp &lt; 20}}Critical!{{/if}}</span></td></tr>
+                <tr><td><span class="trg-help-eg">{{if chatvar::stats.gold &gt;= 100}}Can afford it.{{/if}}</span></td></tr>
+                <tr><td><span class="trg-help-eg">{{if chatvar::hp &lt;= 0 OR chatvar::hp &gt; 100}}Out of range.{{/if}}</span></td></tr>
+            </table>
             <p style="margin-top:4px">Boolean — precedence: <span class="trg-help-eg">!</span> &gt; <span class="trg-help-eg">AND</span> &gt; <span class="trg-help-eg">OR</span> &gt; <span class="trg-help-eg">( )</span></p>
             <table class="trg-ref-table trg-ref-examples" style="margin-top:4px">
                 <tr><td><span class="trg-help-eg">{{if keyword matches "breath|hitch"}}Forced Physical Reaction Cliché{{/if}}</span></td></tr>
@@ -162,11 +180,17 @@ export async function addSettingsPanel() {
         <div class="inline-drawer-content trg-ref-sub-content">
             <p>ST variables persist beyond the current turn. Use them for counters, flags, and state that should survive across generations.</p>
             <table class="trg-ref-table">
-                <tr><td><span class="trg-help-eg">{{chatvar::name}}</span></td><td>read ST chat variable "name" — persists within this chat</td></tr>
-                <tr><td><span class="trg-help-eg">{{globalvar::name}}</span></td><td>read ST global variable "name" — persists across all chats</td></tr>
+                <tr><td><span class="trg-help-eg">{{chatvar::name}}</span></td><td>read ST chat variable — persists within this chat</td></tr>
+                <tr><td><span class="trg-help-eg">{{globalvar::name}}</span></td><td>read ST global variable — persists across all chats</td></tr>
+                <tr><td><span class="trg-help-eg">{{chatvar::stats.hp}}</span></td><td>read object property <span class="trg-help-eg">hp</span> from variable <span class="trg-help-eg">stats</span></td></tr>
+                <tr><td><span class="trg-help-eg">{{chatvar::inventory[0]}}</span></td><td>read array index 0 from variable <span class="trg-help-eg">inventory</span></td></tr>
             </table>
-            <p style="margin-top:6px">Write with the <strong>Set ST variable</strong> action. The value field supports all template syntax — system vars, rule vars, and lorebook tokens resolve before writing.</p>
-            <p style="opacity:.6;font-size:.9em">ST variables are also accessible from SillyTavern's own slash commands (<span class="trg-help-eg">/setvar</span>, <span class="trg-help-eg">/getvar</span>, <span class="trg-help-eg">/incvar</span>) and Quick Replies. Triggeryze turn variables (set via <em>Save as</em>) are separate — they clear every generation.</p>
+            <p style="margin-top:6px">Both <span class="trg-help-eg">.key</span> and <span class="trg-help-eg">[key]</span> syntax work — they are equivalent. One level of indexing supported.</p>
+            <p style="margin-top:6px">Write with the <strong>Set ST variable</strong> action. The optional <em>key</em> field writes to a property or array index, building an object or array automatically if the variable is unset.</p>
+            <table class="trg-ref-table" style="margin-top:4px">
+                <tr><td><em>name</em> = <span class="trg-help-eg">stats</span>, <em>key</em> = <span class="trg-help-eg">hp</span>, <em>value</em> = <span class="trg-help-eg">{{math: {{chatvar::stats.hp}} - 15 }}</span></td></tr>
+            </table>
+            <p style="opacity:.6;font-size:.9em;margin-top:6px">ST variables are also accessible from SillyTavern's own slash commands (<span class="trg-help-eg">/setvar</span>, <span class="trg-help-eg">/getvar</span>, <span class="trg-help-eg">/incvar</span>) and Quick Replies. Triggeryze turn variables (set via <em>Save as</em>) are separate — they clear every generation.</p>
         </div>
         </div>
 

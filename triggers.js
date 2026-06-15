@@ -169,13 +169,30 @@ export async function resolveLbQueryTokens(template, vars = {}) {
     return result;
 }
 
+// Parse .key or [key] index from an ST variable reference.
+// Mirrors _parseVarRef in template.js — duplicated to avoid circular import.
+function _parseVarRef(ref) {
+    const t  = ref.trim();
+    const bm = t.match(/^([^\[.]+)\[([^\]]+)\]$/);
+    if (bm) return { name: bm[1].trim(), index: bm[2].trim() };
+    const dm = t.match(/^([^.]+)\.(.+)$/);
+    if (dm) return { name: dm[1].trim(), index: dm[2].trim() };
+    return { name: t, index: undefined };
+}
+
 // Lightweight turn-var expansion for keyword fields.
 // Unresolved tokens → empty string at evaluation time (produces no match).
 function _expandKwVars(str, snapshot) {
     return str.replace(/\{\{([^{}]+)\}\}/g, (_, k) => {
         k = k.trim();
-        if (k.startsWith('chatvar::'))   return String(getLocalVariable(k.slice(9))   ?? '');
-        if (k.startsWith('globalvar::')) return String(getGlobalVariable(k.slice(12)) ?? '');
+        if (k.startsWith('chatvar::')) {
+            const { name, index } = _parseVarRef(k.slice(9));
+            return String(getLocalVariable(name, index !== undefined ? { index } : {}) ?? '');
+        }
+        if (k.startsWith('globalvar::')) {
+            const { name, index } = _parseVarRef(k.slice(12));
+            return String(getGlobalVariable(name, index !== undefined ? { index } : {}) ?? '');
+        }
         const v = snapshot[k];
         return v !== undefined ? String(v) : '';
     });
@@ -185,8 +202,16 @@ function _expandKwVars(str, snapshot) {
 function _expandKwVarsForPreview(str, snapshot) {
     return str.replace(/\{\{([^{}]+)\}\}/g, (match, k) => {
         k = k.trim();
-        if (k.startsWith('chatvar::'))   return String(getLocalVariable(k.slice(9))   ?? match);
-        if (k.startsWith('globalvar::')) return String(getGlobalVariable(k.slice(12)) ?? match);
+        if (k.startsWith('chatvar::')) {
+            const { name, index } = _parseVarRef(k.slice(9));
+            const val = getLocalVariable(name, index !== undefined ? { index } : {});
+            return val !== null && val !== undefined ? String(val) : match;
+        }
+        if (k.startsWith('globalvar::')) {
+            const { name, index } = _parseVarRef(k.slice(12));
+            const val = getGlobalVariable(name, index !== undefined ? { index } : {});
+            return val !== null && val !== undefined ? String(val) : match;
+        }
         const v = snapshot[k];
         return v !== undefined ? String(v) : match;
     });

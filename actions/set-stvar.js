@@ -28,7 +28,7 @@ export const setStVar = {
     label: 'Set ST variable',
     stage: 'postMessage',
     templateFields: cfg => [cfg.value],
-    defaultConfig: { scope: 'chat', varName: '', value: '' },
+    defaultConfig: { scope: 'chat', varName: '', key: '', value: '' },
 
     async execute(config, { matchedKeyword, messageId, stCtx, vars, debug, highlighted = '' }) {
         if (!config.varName) return;
@@ -45,11 +45,12 @@ export const setStVar = {
             char:    name2 ?? '',
             user:    name1 ?? '',
         }, vars);
-        if (debug) console.log(`[TRG:dev]   setStVar ${config.scope}:${config.varName} =`, value);
+        const keyArg = config.key?.trim() ? { index: config.key.trim() } : {};
+        if (debug) console.log(`[TRG:dev]   setStVar ${config.scope}:${config.varName}${config.key ? `[${config.key}]` : ''} =`, value);
         if (config.scope === 'global') {
-            setGlobalVariable(config.varName, value);
+            setGlobalVariable(config.varName, value, keyArg);
         } else {
-            setLocalVariable(config.varName, value);
+            setLocalVariable(config.varName, value, keyArg);
         }
     },
 
@@ -67,18 +68,23 @@ export const setStVar = {
         <label class="trg-sc-lbl">name</label>
         <input type="text" class="trg-cfg trg-stv-name" placeholder="variable name" value="${esc(config.varName ?? '')}" style="flex:1" />
     </div>
+    <div class="trg-sc-row">
+        <label class="trg-sc-lbl">key</label>
+        <input type="text" class="trg-cfg trg-stv-key" placeholder="optional — object key or array index (e.g. hp, 0)" value="${esc(config.key ?? '')}" style="flex:1" />
+    </div>
     ${renderVarLegend(ctx?.priorActions, ctx?.crossRuleVars)}
     <textarea class="text_pole trg-cfg trg-stv-value" rows="3"
-        placeholder="value — supports {{variables}} and {{chatvar::existing}}">${esc(config.value ?? '')}</textarea>
+        placeholder="value — supports {{variables}}, {{chatvar::stats.hp}}, {{math: expr}}">${esc(config.value ?? '')}</textarea>
 </div>`);
 
         const update = () => onChange({
             ...config,
             scope:   $el.find('.trg-stv-scope').val(),
             varName: $el.find('.trg-stv-name').val().trim(),
+            key:     $el.find('.trg-stv-key').val().trim(),
             value:   $el.find('.trg-stv-value').val(),
         });
-        $el.find('.trg-stv-scope, .trg-stv-name, .trg-stv-value').on('input change', update);
+        $el.find('.trg-stv-scope, .trg-stv-name, .trg-stv-key, .trg-stv-value').on('input change', update);
         $el.on('click', '.trg-var-inject', function () {
             const token = $(this).data('token');
             const $ta   = $el.find('.trg-stv-value');
