@@ -17,7 +17,7 @@
  *     external_io:     eventSource, updateMessageBlock, stCtx.saveChat
  */
 
-import { eventSource, event_types, updateMessageBlock } from '../../../../script.js';
+import { eventSource, event_types, updateMessageBlock } from '../../../../../script.js';
 import { interpolate, resolveLbTokens } from './template.js';
 import { esc } from './text.js';
 import { renderVarLegend } from './var-legend.js';

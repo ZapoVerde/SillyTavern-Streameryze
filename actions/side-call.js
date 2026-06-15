@@ -18,8 +18,8 @@
  *     external_io:     dispatch (via dispatch.js), updateMessageBlock, addOneMessage, eventSource, stCtx.saveChat
  */
 
-import { eventSource, event_types, name1, name2, addOneMessage, updateMessageBlock } from '../../../../script.js';
-import { ConnectionManagerRequestService } from '../../shared.js';
+import { eventSource, event_types, name1, name2, addOneMessage, updateMessageBlock } from '../../../../../script.js';
+import { ConnectionManagerRequestService } from '../../../shared.js';
 import { interpolate, resolveLbTokens } from './template.js';
 import { esc, runQueued, buildHistoryText, extractParagraph, collectUniqueParagraphs } from './text.js';
 import { dispatch, getPrefetchedResults } from './dispatch.js';

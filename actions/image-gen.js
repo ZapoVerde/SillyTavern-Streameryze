@@ -18,7 +18,7 @@
  *     external_io:     generateAndUpload (imageGen.js), appendMediaToMessage, eventSource, stCtx.saveChat
  */
 
-import { eventSource, event_types, name1, name2, appendMediaToMessage, callPopup } from '../../../../script.js';
+import { eventSource, event_types, name1, name2, appendMediaToMessage, callPopup } from '../../../../../script.js';
 import { SOURCE_LABELS, loadModelsForSource, generatePreviewBlob, generateAndUpload } from '../imageGen.js';
 import { interpolate, resolveLbTokens } from './template.js';
 import { esc, buildHistoryText } from './text.js';

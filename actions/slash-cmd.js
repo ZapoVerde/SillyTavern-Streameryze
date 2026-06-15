@@ -18,7 +18,7 @@
  *     external_io:     stCtx.executeSlashCommandsWithOptions, resolveLbTokens (lorebook read)
  */
 
-import { name1, name2 } from '../../../../script.js';
+import { name1, name2 } from '../../../../../script.js';
 import { interpolate, resolveLbTokens } from './template.js';
 import { esc, extractParagraph } from './text.js';
 import { renderVarLegend } from './var-legend.js';

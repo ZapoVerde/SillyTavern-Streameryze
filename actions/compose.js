@@ -17,7 +17,7 @@
  *     external_io:     resolveLbTokens (lorebook read)
  */
 
-import { name1, name2 } from '../../../../script.js';
+import { name1, name2 } from '../../../../../script.js';
 import { interpolate, resolveLbTokens } from './template.js';
 import { esc } from './text.js';
 import { renderVarLegend } from './var-legend.js';

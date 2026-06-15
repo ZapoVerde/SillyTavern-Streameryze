@@ -18,7 +18,7 @@
  *     external_io:     stCtx.stopGeneration(), eventSource, window.SillyTavern
  */
 
-import { eventSource, event_types } from '../../../../script.js';
+import { eventSource, event_types } from '../../../../../script.js';
 
 export const stop = {
     label: 'stop',

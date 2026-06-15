@@ -21,8 +21,8 @@
  *     external_io:     generateQuietPrompt, ConnectionManagerRequestService, window.loggeryze
  */
 
-import { generateQuietPrompt, name1, name2 } from '../../../../script.js';
-import { ConnectionManagerRequestService } from '../../shared.js';
+import { generateQuietPrompt, name1, name2 } from '../../../../../script.js';
+import { ConnectionManagerRequestService } from '../../../shared.js';
 import { interpolate } from './template.js';
 import { buildHistoryText, extractParagraph, collectUniqueParagraphs } from './text.js';
 

@@ -17,7 +17,7 @@
  *     external_io:     lbGetLorebook, lbSaveLorebook, clearWiCache, updateMessageBlock, addOneMessage, eventSource, stCtx.saveChat
  */
 
-import { eventSource, event_types, name1, name2, addOneMessage, updateMessageBlock } from '../../../../script.js';
+import { eventSource, event_types, name1, name2, addOneMessage, updateMessageBlock } from '../../../../../script.js';
 import { interpolate, resolveLbTokens } from './template.js';
 import { esc, extractParagraph, collectUniqueParagraphs } from './text.js';
 import { renderVarLegend } from './var-legend.js';
