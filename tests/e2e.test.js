@@ -131,7 +131,7 @@ import { update }   from '../actions/update.js';
 function makeRule(triggers, actions, overrides = {}) {
     return {
         id: 'e2e', name: 'E2E rule', enabled: true, devMode: false,
-        triggerLogic: 'any', triggers, actions, ...overrides,
+        when: 'any', triggers, actions, ...overrides,
     };
 }
 
@@ -236,7 +236,7 @@ describe('pathway: math expressions', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3. AND trigger gate (triggerLogic: 'all')
+// 3. AND trigger gate (when: 'all')
 // ---------------------------------------------------------------------------
 
 describe('pathway: AND gate (all triggers must match)', () => {
@@ -249,7 +249,7 @@ describe('pathway: AND gate (all triggers must match)', () => {
                 { type: 'varMatch',     config: { varName: 'mood', operator: 'equals', value: 'angry' } },
             ],
             [{ type: 'compose', config: { outputVar: 'outcome', template: 'fired' } }],
-            { triggerLogic: 'all' },
+            { when: 'all' },
         );
 
         // Only keyword matches; varMatch fails (mood not set)
@@ -267,7 +267,7 @@ describe('pathway: AND gate (all triggers must match)', () => {
                 { type: 'varMatch',     config: { varName: 'mood', operator: 'equals', value: 'angry' } },
             ],
             [{ type: 'compose', config: { outputVar: 'outcome', template: 'rage triggered' } }],
-            { triggerLogic: 'all' },
+            { when: 'all' },
         );
 
         const stCtx = makeStCtx('A dragon appeared.');
@@ -279,7 +279,7 @@ describe('pathway: AND gate (all triggers must match)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 4. OR trigger gate (triggerLogic: 'any')
+// 4. OR trigger gate (when: 'any')
 // ---------------------------------------------------------------------------
 
 describe('pathway: OR gate (any trigger is sufficient)', () => {
@@ -292,7 +292,7 @@ describe('pathway: OR gate (any trigger is sufficient)', () => {
                 { type: 'keywordMatch', config: { keywords: 'serpent' } },
             ],
             [{ type: 'compose', config: { outputVar: 'beast', template: '{{keyword}}' } }],
-            { triggerLogic: 'any' },
+            { when: 'any' },
         );
 
         const stCtx = makeStCtx('A serpent coils.');
@@ -310,7 +310,7 @@ describe('pathway: OR gate (any trigger is sufficient)', () => {
                 { type: 'chatComplete', config: {} },
             ],
             [{ type: 'compose', config: { outputVar: 'tag', template: 'chat-done' } }],
-            { triggerLogic: 'any' },
+            { when: 'any' },
         );
 
         // No 'dragon' in text, but chatComplete is set

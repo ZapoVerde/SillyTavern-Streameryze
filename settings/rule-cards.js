@@ -235,11 +235,11 @@ function renderRuleCard(rule, ruleIdx, rsRules, allRules, save) {
     const $whenHdr = $(`
 <div class="trg-section-label">
     WHEN <select class="trg-logic-select">
-        <option value="any" ${rule.triggerLogic !== 'all' ? 'selected' : ''}>any</option>
-        <option value="all" ${rule.triggerLogic === 'all' ? 'selected' : ''}>all</option>
+        <option value="any" ${rule.when !== 'all' ? 'selected' : ''}>any</option>
+        <option value="all" ${rule.when === 'all' ? 'selected' : ''}>all</option>
     </select> of:
 </div>`);
-    $whenHdr.find('.trg-logic-select').on('change', function () { rule.triggerLogic = this.value; rebuild(); });
+    $whenHdr.find('.trg-logic-select').on('change', function () { rule.when = this.value; rebuild(); });
     $when.append($whenHdr);
 
     const $triggers = $('<div class="trg-ingredient-list">');
@@ -356,7 +356,7 @@ function renderRulesetCard(ruleset, rsIdx, allRules, save) {
         $body.find('.trg-add-wrap').remove();
         const $addRule = $('<button class="trg-add-btn trg-rs-add-rule">+ rule</button>');
         $addRule.on('click', () => {
-            ruleset.rules.push({ id: makeId(), enabled: true, triggerLogic: 'any', triggers: [], actions: [] });
+            ruleset.rules.push({ id: makeId(), enabled: true, when: 'any', triggers: [], actions: [] });
             rebuild();
         });
         $body.append($addRule);

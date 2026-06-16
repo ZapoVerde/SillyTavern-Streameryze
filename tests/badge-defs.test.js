@@ -21,7 +21,8 @@ vi.mock('../../../../../scripts/variables.js', () => ({
 }));
 
 vi.mock('../settings/storage.js', () => ({
-    getSettings: vi.fn(() => ({ rules: [], verbose: false })),
+    getSettings:      vi.fn(() => ({ rules: [], verbose: false })),
+    getEnabledRules:  vi.fn((s) => (s.rules ?? []).filter(r => r.enabled !== false)),
 }));
 
 vi.mock('../badge.js', () => ({
@@ -73,7 +74,7 @@ import { renderRuleBadges, injectInlineBadges } from '../badge.js';
 
 function makeRule(id, triggerType, triggerConfig, overrides = {}) {
     return {
-        id, name: id, enabled: true, triggerLogic: 'any',
+        id, name: id, enabled: true, when: 'any',
         triggers: [{ type: triggerType, config: triggerConfig }],
         actions:  [],
         ...overrides,

@@ -97,6 +97,11 @@ function _migrateSettings(s) {
     let migrated = 0;
     const migrateRules = (rules) => {
         for (const rule of (rules ?? [])) {
+            if (rule.triggerLogic !== undefined && rule.when === undefined) {
+                rule.when = rule.triggerLogic;
+                delete rule.triggerLogic;
+                migrated++;
+            }
             for (const action of (rule.actions ?? [])) {
                 if (action.type === 'lbWrite') {
                     action.type   = 'update';

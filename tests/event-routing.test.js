@@ -21,7 +21,8 @@ vi.mock('../../../../../scripts/variables.js', () => ({
 }));
 
 vi.mock('../settings/storage.js', () => ({
-    getSettings: vi.fn(() => ({ rules: [], verbose: false, enabled: true })),
+    getSettings:     vi.fn(() => ({ rules: [], verbose: false, enabled: true })),
+    getEnabledRules: vi.fn((s) => (s.rules ?? []).filter(r => r.enabled !== false)),
 }));
 
 vi.mock('../badge.js', () => ({
@@ -74,7 +75,7 @@ import { executeActions }                                   from '../engine/exec
 
 function makeRule(id, triggerType, triggerConfig, overrides = {}) {
     return {
-        id, name: id, enabled: true, triggerLogic: 'any',
+        id, name: id, enabled: true, when: 'any',
         triggers: [{ type: triggerType, config: triggerConfig }],
         actions:  [],
         ...overrides,

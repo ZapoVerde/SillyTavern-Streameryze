@@ -13,8 +13,8 @@ import { ACTION_REGISTRY }  from '../actions/index.js';
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeRule(triggers, triggerLogic = 'any', actions = []) {
-    return { triggers, triggerLogic, actions };
+function makeRule(triggers, when = 'any', actions = []) {
+    return { triggers, when, actions };
 }
 
 function makeTrigger(type, config = {}) {
@@ -39,7 +39,7 @@ describe('evaluateTriggers', () => {
         expect(await evaluateTriggers({}, '')).toBeNull();
     });
 
-    describe('OR mode (default / triggerLogic: "any")', () => {
+    describe('OR mode (default / when: "any")', () => {
         it('returns matched string from first matching trigger', async () => {
             TRIGGER_REGISTRY.kw = { test: vi.fn().mockResolvedValue('hello') };
             expect(await evaluateTriggers(makeRule([makeTrigger('kw')], 'any'), 'hello world')).toBe('hello');
@@ -69,7 +69,7 @@ describe('evaluateTriggers', () => {
         });
     });
 
-    describe('AND mode (triggerLogic: "all")', () => {
+    describe('AND mode (when: "all")', () => {
         it('returns first matched string when all triggers match', async () => {
             TRIGGER_REGISTRY.a = { test: vi.fn().mockResolvedValue('match-a') };
             TRIGGER_REGISTRY.b = { test: vi.fn().mockResolvedValue('match-b') };
