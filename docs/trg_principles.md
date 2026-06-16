@@ -176,6 +176,18 @@ This principle means users can drive any string field from LLM output stored in 
 
 ---
 
+## 16. The Save Format Mirrors the UI
+
+A user who can read the settings panel should be able to read a saved ruleset file without a translator. Type keys in the format are kebab-case renderings of the labels shown in the UI — `call-llm` not `sideCall`, `keyword` not `keywordMatch`. The format is the public surface; internal registry keys are an implementation detail that never appears in files the user touches.
+
+The translation between format keys and registry keys lives entirely at the import/export boundary. Nothing else in the system knows about it. Code that leaks a registry key into the save format, or reads a format key directly from settings, has broken this boundary.
+
+This principle has a corollary: **import failures must be visible and named.** A rule that loads but silently does nothing is harder to diagnose than a rule that fails with a clear error. Unknown type keys, wrong enum values, and missing required fields each produce a specific warning naming the problem, the location, and the valid alternatives. Silent acceptance of broken input is a bug.
+
+The `note` field on rulesets, rules, triggers, and actions exists so that authors — including LLMs generating rulesets — can record intent alongside configuration. When a rule misfires, the note is the first thing to read: does the stated intent match what the config actually does? A system where the author's reasoning is preserved in the file is a system where debugging starts with reading, not guessing.
+
+---
+
 ## 14. Tests Cover Logic, Not the UI
 
 The settings panel is scaffolding — it reads state into the DOM and writes DOM values back to state. It contains no logic (Principle 11). A test that validates DOM state is testing that the framework renders, not that Triggeryze is correct. There is nothing to unit-test in UI code, and adding tests there would only paper over a violation of Principle 11 if logic had migrated into the panel.
