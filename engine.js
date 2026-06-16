@@ -1,11 +1,15 @@
 /**
  * @file st-extensions/SillyTavern-Triggeryze/engine.js
- * @stamp {"utc":"2026-06-15T12:00:00.000Z"}
+ * @stamp {"utc":"2026-06-16T00:00:00.000Z"}
  * @architectural-role Engine — rule dispatch orchestrator
  * @description
  * Owns per-generation dedup state and routes GENERATION_STARTED / STREAM_TOKEN_RECEIVED /
  * MESSAGE_RECEIVED events through the active rule list. No trigger evaluation, action
  * execution, or DOM patching logic lives here; those are delegated to engine/ sub-modules.
+ *
+ * Rules are stored in rulesets (see storage.js). The engine never works with rulesets
+ * directly — it calls getEnabledRules(s) to receive a flat pre-filtered list, identical
+ * in shape to the old s.rules array.
  *
  * For each event:
  *   1. Collect rules whose actions include the current stage.
@@ -28,7 +32,7 @@
  *     external_io:     delegates all IO to engine/ sub-modules and badge.js
  */
 
-import { getSettings }                                                       from './settings/storage.js';
+import { getSettings, getEnabledRules }                                       from './settings/storage.js';
 import { clearWiCache, setChatComplete, clearTurnVars, setCurrentEvent, clearCurrentEvent } from './triggers.js';
 import { clearPrefetchCache, isDispatchActive }                              from './actions/index.js';
 import { ensureBadge, setBadge, renderRuleBadges, injectInlineBadges, reinjectAllInlineBadges, removeAllInlineBadges } from './badge.js';
@@ -84,7 +88,7 @@ function getInlineBadgeDefs(rules) {
 export async function fireRuleManually(ruleId, messageId, highlighted = '', forcedMatchedKw = null) {
     const s = getSettings();
     if (!s?.enabled) return;
-    const rule = (s.rules ?? []).find(r => r.id === ruleId && r.enabled);
+    const rule = getEnabledRules(s).find(r => r.id === ruleId);
     if (!rule) return;
     const stCtx = window.SillyTavern?.getContext?.();
     const defaultLabel = rule.triggers?.find(t => t.type === 'badge' || t.type === 'badgeTrigger')?.config?.label ?? 'badge';
@@ -99,7 +103,7 @@ export async function fireRuleManually(ruleId, messageId, highlighted = '', forc
 
 export function reinjectRuleBadges(messageId = null) {
     const s    = getSettings();
-    const defs = getRuleBadgeDefs(s?.rules);
+    const defs = getRuleBadgeDefs(getEnabledRules(s));
     if (messageId !== null) { renderRuleBadges(messageId, defs); return; }
     const stCtx = window.SillyTavern?.getContext?.();
     if (!stCtx?.chat) return;
@@ -108,7 +112,7 @@ export function reinjectRuleBadges(messageId = null) {
 
 export function reinjectInlineBadges(messageId = null) {
     const s    = getSettings();
-    const defs = getInlineBadgeDefs(s?.rules);
+    const defs = getInlineBadgeDefs(getEnabledRules(s));
     if (messageId !== null) { injectInlineBadges(messageId, defs); return; }
     reinjectAllInlineBadges(defs);
 }
@@ -131,8 +135,8 @@ export async function onGenerationStarted() {
 
     const s = getSettings();
     if (!s?.enabled) return;
-    const candidates = (s.rules ?? []).filter(r =>
-        r.enabled && r.triggers?.some(t => t.type === 'event' && t.config?.event === 'GENERATION_STARTED')
+    const candidates = getEnabledRules(s).filter(r =>
+        r.triggers?.some(t => t.type === 'event' && t.config?.event === 'GENERATION_STARTED')
     );
     if (!candidates.length) return;
     setCurrentEvent('GENERATION_STARTED');
@@ -157,8 +161,8 @@ export async function onStreamToken(text) {
     if (!s?.enabled) return;
     const stCtx = window.SillyTavern?.getContext?.();
 
-    for (const rule of (s.rules ?? [])) {
-        if (!rule.enabled || !ruleHasStage(rule, 'stream')) continue;
+    for (const rule of getEnabledRules(s)) {
+        if (!ruleHasStage(rule, 'stream')) continue;
         const key = `${rule.id}:stream`;
         if (_fired.has(key)) continue;
 
@@ -175,7 +179,7 @@ export async function onStreamToken(text) {
         await applyLivePatch(text, streamingMessageId, stCtx);
         await applyPrefetch(text, streamingMessageId, stCtx, () => _generationId);
         await applyEarlyActions(text, streamingMessageId, stCtx, () => _generationId);
-        await applyInlineBadgePatch(streamingMessageId, getInlineBadgeDefs(s.rules));
+        await applyInlineBadgePatch(streamingMessageId, getInlineBadgeDefs(getEnabledRules(s)));
     }
 }
 
@@ -190,8 +194,8 @@ export async function onMessageReceived(messageId) {
     setChatComplete(true);
     setCurrentEvent('MESSAGE_RECEIVED');
     ensureBadge(messageId);
-    renderRuleBadges(messageId, getRuleBadgeDefs(s?.rules));
-    injectInlineBadges(messageId, getInlineBadgeDefs(s?.rules));
+    renderRuleBadges(messageId, getRuleBadgeDefs(getEnabledRules(s)));
+    injectInlineBadges(messageId, getInlineBadgeDefs(getEnabledRules(s)));
 
     const firedThisCall   = new Set();
     const matchedKeywords = new Set();
@@ -202,8 +206,8 @@ export async function onMessageReceived(messageId) {
     try {
         while (anyFired) {
             anyFired = false;
-            for (const rule of (s.rules ?? [])) {
-                if (!rule.enabled || !ruleHasStage(rule, 'postMessage')) continue;
+            for (const rule of getEnabledRules(s)) {
+                if (!ruleHasStage(rule, 'postMessage')) continue;
                 const key = `${rule.id}:postMessage`;
                 if (firedThisCall.has(key)) continue;
 
@@ -238,8 +242,8 @@ export async function onMessageReceived(messageId) {
 
     if (!s.nonStreaming) return;
 
-    for (const rule of (s.rules ?? [])) {
-        if (!rule.enabled || !ruleHasStage(rule, 'stream')) continue;
+    for (const rule of getEnabledRules(s)) {
+        if (!ruleHasStage(rule, 'stream')) continue;
         const key = `${rule.id}:stream`;
         if (_fired.has(key)) continue;
 
@@ -255,8 +259,8 @@ export async function onMessageReceived(messageId) {
 export async function onCharacterMessageRendered(messageId) {
     const s = getSettings();
     if (!s?.enabled) return;
-    const candidates = (s.rules ?? []).filter(r =>
-        r.enabled && r.triggers?.some(t => t.type === 'event' && t.config?.event === 'CHARACTER_MESSAGE_RENDERED')
+    const candidates = getEnabledRules(s).filter(r =>
+        r.triggers?.some(t => t.type === 'event' && t.config?.event === 'CHARACTER_MESSAGE_RENDERED')
     );
     if (!candidates.length) return;
     const stCtx = window.SillyTavern?.getContext?.();

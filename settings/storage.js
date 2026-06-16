@@ -1,17 +1,21 @@
 /**
  * @file st-extensions/SillyTavern-Triggeryze/settings/storage.js
- * @stamp {"utc":"2026-06-15T00:00:00.000Z"}
- * @architectural-role IO — settings initialisation, migration, and read accessor
+ * @stamp {"utc":"2026-06-16T00:00:00.000Z"}
+ * @architectural-role IO — settings initialisation, migration, and read accessors
  * @description
  * Owns the canonical settings object in extension_settings.triggeryze. Handles
- * one-time key migration (streameryze → triggeryze), flat-to-profile migration,
- * and lbWrite → update action type migration. All other modules read settings
- * via getSettings(); none write the root object directly.
+ * one-time key migration (streameryze → triggeryze), flat-rules-to-profile migration,
+ * rules-to-rulesets migration, and lbWrite → update action type migration. All other
+ * modules read settings via getSettings(); none write the root object directly.
+ *
+ * The live settings object stores rules grouped into rulesets. The engine never sees
+ * rulesets directly — it calls getEnabledRules(s) to receive a flat, pre-filtered list.
  *
  * @api-declaration
- * loadSettings()  — idempotent init; call once at extension load time
- * getSettings()   — returns the live extension_settings.triggeryze object
- * makeId()        — generates a short random ID for new rules
+ * loadSettings()       — idempotent init; call once at extension load time
+ * getSettings()        — returns the live extension_settings.triggeryze object
+ * getEnabledRules(s)   — flattens enabled rulesets to an enabled-rule array for the engine
+ * makeId()             — generates a short random ID for new rulesets and rules
  *
  * @contract
  *   assertions:
@@ -26,16 +30,23 @@ import { extension_settings }    from '../../../../extensions.js';
 const EXT_NAME = 'triggeryze';
 
 const DEFAULTS = {
-    enabled:      true,
-    verbose:      false,
-    nonStreaming:  false,
-    showBadges:   true,
-    rules:        [],
+    enabled:     true,
+    verbose:     false,
+    nonStreaming: false,
+    showBadges:  true,
+    rulesets:    [],
 };
 
 export function makeId() { return Math.random().toString(36).slice(2, 9); }
 
 export function getSettings() { return extension_settings[EXT_NAME]; }
+
+/** Returns a flat array of enabled rules across all enabled rulesets. Used by the engine only. */
+export function getEnabledRules(s) {
+    return (s.rulesets ?? [])
+        .filter(rs => rs.enabled !== false)
+        .flatMap(rs => (rs.rules ?? []).filter(r => r.enabled !== false));
+}
 
 export function loadSettings() {
     if (extension_settings['streameryze'] && !extension_settings['triggeryze']) {
@@ -47,14 +58,36 @@ export function loadSettings() {
     for (const [k, v] of Object.entries(DEFAULTS)) {
         s[k] ??= structuredClone(v);
     }
-    s.rules = s.rules.filter(r => r.id && Array.isArray(r.triggers) && Array.isArray(r.actions));
+
+    // Migrate flat rules array → single Default ruleset
+    if (Array.isArray(s.rules) && !s.rulesets?.length) {
+        const validRules = s.rules.filter(r => r.id && Array.isArray(r.triggers) && Array.isArray(r.actions));
+        s.rulesets = [{ id: makeId(), name: 'Default', enabled: true, rules: validRules }];
+        delete s.rules;
+        saveSettingsDebounced();
+    }
+
+    // Validate rulesets: each must have an id and a rules array
+    s.rulesets = (s.rulesets ?? []).filter(rs => rs.id && Array.isArray(rs.rules));
+    for (const rs of s.rulesets) {
+        rs.rules = rs.rules.filter(r => r.id && Array.isArray(r.triggers) && Array.isArray(r.actions));
+    }
 
     if (!s.profiles) {
-        s.profiles           = { Default: { rules: structuredClone(s.rules) } };
+        s.profiles           = { Default: { rulesets: structuredClone(s.rulesets) } };
         s.currentProfileName = 'Default';
     }
     if (!s.profiles[s.currentProfileName]) {
         s.currentProfileName = Object.keys(s.profiles)[0];
+    }
+
+    // Migrate profiles that still use a flat rules array
+    for (const profile of Object.values(s.profiles)) {
+        if (Array.isArray(profile.rules) && !profile.rulesets?.length) {
+            const validRules = profile.rules.filter(r => r.id && Array.isArray(r.triggers) && Array.isArray(r.actions));
+            profile.rulesets = [{ id: makeId(), name: 'Default', enabled: true, rules: validRules }];
+            delete profile.rules;
+        }
     }
 
     _migrateSettings(s);
@@ -73,8 +106,10 @@ function _migrateSettings(s) {
             }
         }
     };
-    migrateRules(s.rules);
-    for (const profile of Object.values(s.profiles ?? {})) migrateRules(profile.rules);
+    for (const rs of (s.rulesets ?? [])) migrateRules(rs.rules);
+    for (const profile of Object.values(s.profiles ?? {})) {
+        for (const rs of (profile.rulesets ?? [])) migrateRules(rs.rules);
+    }
     if (migrated > 0) {
         console.log(`[triggeryze] migrated ${migrated} lbWrite action(s) to update`);
         saveSettingsDebounced();

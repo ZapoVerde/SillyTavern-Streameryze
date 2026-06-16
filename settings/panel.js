@@ -61,7 +61,7 @@ export async function addSettingsPanel() {
         <button id="trg-profile-import" class="trg-btn-icon" title="Import profile or rule from JSON"><i class="fa-solid fa-file-import"></i></button>
     </div>
     <div id="trg_rules_list"></div>
-    <button id="trg_add_rule" class="menu_button"><i class="fa-solid fa-plus"></i> Add rule</button>
+    <button id="trg_add_ruleset" class="menu_button"><i class="fa-solid fa-plus"></i> Add group</button>
     <div class="inline-drawer trg-ref-drawer">
     <div class="inline-drawer-toggle inline-drawer-header">
         <b>Template Language</b>
@@ -217,8 +217,8 @@ export async function addSettingsPanel() {
         saveSettingsDebounced();
         if (this.checked) reinjectAllBadges(); else removeAllBadges();
     });
-    $('#trg_add_rule').on('click', () => {
-        getSettings().rules.push({ id: makeId(), enabled: true, triggerLogic: 'any', triggers: [], actions: [] });
+    $('#trg_add_ruleset').on('click', () => {
+        getSettings().rulesets.push({ id: makeId(), name: '', enabled: true, rules: [] });
         save();
         renderRules(save);
     });
