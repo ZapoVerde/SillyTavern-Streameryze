@@ -5,8 +5,13 @@ vi.mock('../../../extensions.js', () => ({
     extension_settings: { triggeryze: { showBadges: true } },
 }));
 
-// triggers.js (imported by badge.js) reaches world-info 4 levels up.
+// badge.js imports lb-query.js and kw-preview.js from triggers/, which use 5-up paths.
 vi.mock('../../../../scripts/world-info.js', () => ({
+    getSortedEntries:          vi.fn(async () => []),
+    parseRegexFromString:      vi.fn(() => null),
+    world_info_case_sensitive: false,
+}));
+vi.mock('../../../../../scripts/world-info.js', () => ({
     getSortedEntries:          vi.fn(async () => []),
     parseRegexFromString:      vi.fn(() => null),
     world_info_case_sensitive: false,
@@ -24,7 +29,8 @@ vi.mock('../../../../../scripts/variables.js', () => ({
 }));
 
 import { buildResolvedPatterns } from '../badge.js';
-import { setTurnVar, clearTurnVars, clearWiCache } from '../triggers.js';
+import { setTurnVar, clearTurnVars } from '../triggers/turn-vars.js';
+import { clearWiCache }               from '../triggers/lb-query.js';
 
 beforeEach(() => {
     clearTurnVars();

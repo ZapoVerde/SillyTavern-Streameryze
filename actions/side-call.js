@@ -20,8 +20,8 @@
 
 import { eventSource, event_types, name1, name2, addOneMessage, updateMessageBlock } from '../../../../../script.js';
 import { ConnectionManagerRequestService } from '../../../shared.js';
-import { interpolate, resolveLbTokens } from './template.js';
-import { esc, runQueued, buildHistoryText, extractParagraph, collectUniqueParagraphs } from './text.js';
+import { interpolate, resolveLbTokens, resolveHistoryTokens } from './template.js';
+import { esc, runQueued, extractParagraph, collectUniqueParagraphs } from './text.js';
 import { dispatch, getPrefetchedResults } from './dispatch.js';
 import { renderVarLegend } from './var-legend.js';
 
@@ -29,7 +29,7 @@ export const sideCall = {
     label: 'call LLM',
     stage: 'postMessage',
     templateFields: cfg => [cfg.prompt],
-    defaultConfig: { prompt: '', profileId: null, outputMode: 'replaceKeyword', callMode: 'once', historyTurns: 0, outputVar: '' },
+    defaultConfig: { prompt: '', profileId: null, outputMode: 'replaceKeyword', callMode: 'once', outputVar: '' },
 
     async execute(config, { matchedKeyword, messageId, stCtx, ruleId, actionIdx, isCurrentGeneration, vars, debug, highlighted = '' }) {
         const msg         = stCtx?.chat?.[messageId];
@@ -38,16 +38,17 @@ export const sideCall = {
         const mode        = config.outputMode  ?? 'replaceKeyword';
         const callMode    = config.callMode    ?? 'once';
         const cacheKey    = `${ruleId}:${actionIdx}`;
-        const historyText = buildHistoryText(stCtx?.chat, messageId, config.historyTurns ?? 0);
         const kwEsc       = matchedKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const mkRe        = () => new RegExp(kwEsc, 'gi');
-        const resolvedPrompt = await resolveLbTokens(config.prompt ?? '', matchedKeyword, highlighted, vars);
+        const resolvedPrompt = resolveHistoryTokens(
+            await resolveLbTokens(config.prompt ?? '', matchedKeyword, highlighted, vars, messageId),
+            stCtx?.chat, messageId, vars ?? {},
+        );
 
         const mkPrompt = (paragraph = '', upTo = '') => interpolate(resolvedPrompt, {
             keyword:   matchedKeyword ?? '',
             message:   msg?.mes ?? '',
             paragraph,
-            history:   historyText,
             'up-to':   upTo,
             char:      charName,
             user:      userName,
@@ -203,29 +204,22 @@ export const sideCall = {
         <label class="trg-sc-lbl">save as</label>
         <input type="text" class="trg-cfg trg-sc-outvar trg-outvar-field" placeholder="variable name (optional)" value="${esc(config.outputVar ?? '')}" style="flex:1" />
     </div>
-    <div class="trg-sc-row">
-        <label class="trg-sc-lbl">history</label>
-        <input type="number" class="trg-cfg trg-sc-history" min="0" max="20" step="1"
-            value="${config.historyTurns ?? 0}" style="width:54px" />
-        <small class="trg-sc-hint-inline">turns  —  use {{history}} in prompt</small>
-    </div>
     ${renderVarLegend(ctx?.priorActions, ctx?.crossRuleVars)}
     <textarea class="text_pole trg-cfg trg-sc-prompt" rows="3"
-        placeholder="Prompt — {{keyword}} {{up-to}} {{paragraph}} {{message}} {{history}} {{char}} {{user}}">${esc(config.prompt)}</textarea>
+        placeholder="Prompt — {{keyword}} {{up-to}} {{paragraph}} {{message}} {{history:[2]}} {{char}} {{user}}">${esc(config.prompt)}</textarea>
 </div>`);
 
         const update = () => onChange({
             ...config,
-            profileId:    $el.find('.trg-sc-profile').val() || null,
-            outputMode:   $el.find('.trg-sc-mode').val(),
-            callMode:     $el.find('.trg-sc-callmode').val(),
-            outputVar:    $el.find('.trg-sc-outvar').val().trim(),
-            historyTurns: parseInt($el.find('.trg-sc-history').val(), 10) || 0,
-            prompt:       $el.find('.trg-sc-prompt').val(),
+            profileId:  $el.find('.trg-sc-profile').val() || null,
+            outputMode: $el.find('.trg-sc-mode').val(),
+            callMode:   $el.find('.trg-sc-callmode').val(),
+            outputVar:  $el.find('.trg-sc-outvar').val().trim(),
+            prompt:     $el.find('.trg-sc-prompt').val(),
         });
 
         $el.find('.trg-sc-profile, .trg-sc-mode, .trg-sc-callmode').on('change', update);
-        $el.find('.trg-sc-history, .trg-sc-outvar').on('input', update);
+        $el.find('.trg-sc-outvar').on('input', update);
         $el.find('.trg-sc-prompt').on('input', update);
         $el.on('click', '.trg-var-inject', function () {
             const token = $(this).data('token');

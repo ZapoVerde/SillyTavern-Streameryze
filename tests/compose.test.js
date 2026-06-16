@@ -1,6 +1,7 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 
-vi.mock('../../../../../script.js', () => ({ name1: 'Alice', name2: 'Bot' }));
+vi.mock('../../../../../script.js',         () => ({ name1: 'Alice', name2: 'Bot' }));
+vi.mock('../../../../../scripts/openai.js', () => ({ oai_settings: { prompts: [] } }));
 
 vi.mock('../triggers.js', () => ({
     getLbEntryByName:     vi.fn(async () => null),

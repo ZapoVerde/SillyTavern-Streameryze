@@ -23,8 +23,8 @@
 
 import { generateQuietPrompt, name1, name2 } from '../../../../../script.js';
 import { ConnectionManagerRequestService } from '../../../shared.js';
-import { interpolate } from './template.js';
-import { buildHistoryText, extractParagraph, collectUniqueParagraphs } from './text.js';
+import { interpolate, resolveHistoryTokens } from './template.js';
+import { extractParagraph, collectUniqueParagraphs } from './text.js';
 
 // Count of active background LLM dispatches. When non-zero, engine.onGenerationStarted
 // must not clear Triggeryze's per-generation state — the GENERATION_STARTED event it
@@ -110,15 +110,17 @@ export function prefetchSideCall(key, config, matchedKeyword, streamText, stCtx,
     const mode     = config.outputMode ?? 'replaceKeyword';
     if (mode === 'silent') return;
 
-    const historyText = buildHistoryText(stCtx?.chat, streamingMsgIdx ?? 0, config.historyTurns ?? 0);
+    // Resolve {{history:[N]}} / {{history:var}} inline in the prompt at prefetch time.
+    // Variable-form tokens ({{history:var}}) resolve to empty if the var isn't set yet
+    // during streaming — execute() at postMessage stage will have the correct value.
+    const resolvedPrompt = resolveHistoryTokens(config.prompt ?? '', stCtx?.chat, streamingMsgIdx ?? 0, {});
     const kwEsc = matchedKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const mkRe  = () => new RegExp(kwEsc, 'gi');
 
-    const mkPrompt = (paragraph = '', upTo = '') => interpolate(config.prompt ?? '', {
+    const mkPrompt = (paragraph = '', upTo = '') => interpolate(resolvedPrompt, {
         keyword:   matchedKeyword ?? '',
         message:   streamText,
         paragraph,
-        history:   historyText,
         'up-to':   upTo,
         char:      name2 ?? '',
         user:      name1 ?? '',

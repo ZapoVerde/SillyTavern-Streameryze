@@ -25,7 +25,7 @@ import { getSettings }                                                      from
 import { stageMatches, getVarDeps, evaluateTriggers }                       from './evaluate.js';
 import { hasLiveResult, setLiveResult }                                     from './live-patch.js';
 import { ACTION_REGISTRY, getTemplateTier, resolveLbTokens, interpolate }   from '../actions/index.js';
-import { setTurnVar, getTurnVar, getTurnVarsSnapshot }                      from '../triggers.js';
+import { setTurnVar, getTurnVar, getTurnVarsSnapshot }   from '../triggers/turn-vars.js';
 
 const log = (tag, ...args) => { if (getSettings()?.verbose) console.log(`[triggeryze] ${tag}`, ...args); };
 
@@ -109,7 +109,7 @@ export async function applyEarlyActions(text, streamingMessageId, stCtx, getGenI
 
     for (const rule of (s.rules ?? [])) {
         if (!rule.enabled) continue;
-        if (rule.triggers?.some(t => t.type === 'chatComplete')) continue;
+        if (rule.triggers?.some(t => t.type === 'event' && t.config?.event === 'MESSAGE_RECEIVED')) continue;
 
         const ruleVars   = new Set((rule.actions ?? []).map(a => a.config?.outputVar).filter(Boolean));
         const candidates = (rule.actions ?? [])

@@ -10,6 +10,8 @@ vi.mock('../../../../../scripts/variables.js', () => ({
     getLocalVariable:  vi.fn(() => null),
     getGlobalVariable: vi.fn(() => null),
 }));
+vi.mock('../../../../../script.js',         () => ({ itemizedPrompts: [] }));
+vi.mock('../../../../../scripts/openai.js', () => ({ oai_settings: { prompts: [] } }));
 
 import { interpolate } from '../actions/template.js';
 import { getLocalVariable, getGlobalVariable } from '../../../../../scripts/variables.js';

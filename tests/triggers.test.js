@@ -1,40 +1,41 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 // Vitest matches vi.mock paths against the raw import specifier when the file doesn't exist.
-// triggers.js is at the project root and uses 4-level-up paths; we mirror that exactly.
+// triggers/ submodules (lb-query.js, keyword.js, kw-preview.js) use 5-up paths.
+// Keep the 4-up mock as a no-op fallback; the 5-up mock is what actually intercepts.
 vi.mock('../../../../scripts/world-info.js', () => ({
     getSortedEntries:          vi.fn(async () => []),
     parseRegexFromString:      vi.fn(() => null),
     world_info_case_sensitive: false,
 }));
+vi.mock('../../../../../scripts/world-info.js', () => ({
+    getSortedEntries:          vi.fn(async () => []),
+    parseRegexFromString:      vi.fn(() => null),
+    world_info_case_sensitive: false,
+}));
 
-// triggers.js uses 4-up for variables.js (from project root).
 vi.mock('../../../../scripts/variables.js', () => ({
     getLocalVariable:  vi.fn(() => null),
     getGlobalVariable: vi.fn(() => null),
 }));
 
-// condition.js (in actions/) uses 5-up for variables.js — mirror that too so condition.js loads cleanly.
+// condition.js (in actions/) and triggers/ submodules use 5-up for variables.js.
 vi.mock('../../../../../scripts/variables.js', () => ({
     getLocalVariable:  vi.fn(() => null),
     getGlobalVariable: vi.fn(() => null),
 }));
 
-import {
-    TRIGGER_REGISTRY,
-    setTurnVar, getTurnVar, clearTurnVars, getTurnVarsSnapshot,
-    setChatComplete, clearWiCache,
-    setCurrentEvent, clearCurrentEvent,
-    getLbEntryByName,
-    resolveLbQueryTokens,
-} from '../triggers.js';
-import { getSortedEntries, parseRegexFromString }    from '../../../../scripts/world-info.js';
+import { TRIGGER_REGISTRY }                                from '../triggers.js';
+import { setTurnVar, getTurnVar, clearTurnVars, getTurnVarsSnapshot } from '../triggers/turn-vars.js';
+import { clearWiCache, getLbEntryByName, resolveLbQueryTokens }       from '../triggers/lb-query.js';
+import { setCurrentEvent, clearCurrentEvent }               from '../triggers/event.js';
+// Import from 5-up so vi.mocked() controls the same instance lb-query.js and keyword.js use.
+import { getSortedEntries, parseRegexFromString }    from '../../../../../scripts/world-info.js';
 import { getLocalVariable as getLocalVar5up }        from '../../../../../scripts/variables.js';
 
 beforeEach(() => {
     clearTurnVars();
     clearWiCache();
-    setChatComplete(false);
     clearCurrentEvent();
     vi.clearAllMocks();
     // Default: getSortedEntries returns no entries, parseRegexFromString returns null
@@ -84,107 +85,128 @@ describe('turn variable store', () => {
 });
 
 // ---------------------------------------------------------------------------
-// keywordMatch trigger
+// keyword trigger — text mode
 // ---------------------------------------------------------------------------
 
-describe('TRIGGER_REGISTRY.keywordMatch', () => {
-    const kw = TRIGGER_REGISTRY.keywordMatch;
+describe('TRIGGER_REGISTRY.keyword (text mode)', () => {
+    const kw = TRIGGER_REGISTRY.keyword;
 
     it('matches a plain keyword anywhere in the text (case insensitive by default)', async () => {
-        expect(await kw.test('Hello World', { keywords: 'world' })).toBe('world');
+        expect(await kw.test('Hello World', { mode: 'text', keywords: 'world' })).toBe('world');
     });
 
     it('returns null when the keyword is not found', async () => {
-        expect(await kw.test('Hello World', { keywords: 'dragon' })).toBeNull();
+        expect(await kw.test('Hello World', { mode: 'text', keywords: 'dragon' })).toBeNull();
     });
 
     it('returns the keyword as matched when caseSensitive is false', async () => {
-        expect(await kw.test('HELLO', { keywords: 'hello', caseSensitive: false })).toBe('hello');
+        expect(await kw.test('HELLO', { mode: 'text', keywords: 'hello', caseSensitive: false })).toBe('hello');
     });
 
     it('returns null when case-sensitive and case differs', async () => {
-        expect(await kw.test('HELLO', { keywords: 'hello', caseSensitive: true })).toBeNull();
+        expect(await kw.test('HELLO', { mode: 'text', keywords: 'hello', caseSensitive: true })).toBeNull();
     });
 
     it('returns the first matching keyword from a comma-separated list', async () => {
-        expect(await kw.test('the dragon roars', { keywords: 'knight, dragon, wizard' })).toBe('dragon');
+        expect(await kw.test('the dragon roars', { mode: 'text', keywords: 'knight, dragon, wizard' })).toBe('dragon');
     });
 
     it('returns null when no keyword in the list matches', async () => {
-        expect(await kw.test('A peaceful meadow', { keywords: 'dragon, wizard' })).toBeNull();
+        expect(await kw.test('A peaceful meadow', { mode: 'text', keywords: 'dragon, wizard' })).toBeNull();
     });
 
     it('returns null for empty keywords string', async () => {
-        expect(await kw.test('hello world', { keywords: '' })).toBeNull();
+        expect(await kw.test('hello world', { mode: 'text', keywords: '' })).toBeNull();
+    });
+
+    it('defaults to text mode when mode is absent', async () => {
+        expect(await kw.test('hello world', { keywords: 'hello' })).toBe('hello');
     });
 
     it('glob * matches zero or more characters', async () => {
         // globToRegex produces /sam.*/i — no anchors, so exec() returns from the first match
         // position to end-of-string ('samuel was there'), not just the word 'samuel'.
-        const result = await kw.test('samuel was there', { keywords: 'sam*' });
+        const result = await kw.test('samuel was there', { mode: 'text', keywords: 'sam*' });
         expect(result).not.toBeNull();
         expect(result).toMatch(/^samuel/);
     });
 
     it('glob * does not match across word boundaries incorrectly', async () => {
-        // 'sam*' should match 'samuel' in the text
-        const result = await kw.test('I saw samuel today', { keywords: 'sam*' });
+        const result = await kw.test('I saw samuel today', { mode: 'text', keywords: 'sam*' });
         expect(result).not.toBeNull();
     });
 
     it('glob ? matches exactly one character', async () => {
-        const result = await kw.test('elara speaks', { keywords: 'el?ra' });
+        const result = await kw.test('elara speaks', { mode: 'text', keywords: 'el?ra' });
         expect(result).toBe('elara');
     });
 
     it('glob ? does not match zero or two characters', async () => {
-        expect(await kw.test('elra speaks', { keywords: 'el?ra' })).toBeNull();
+        expect(await kw.test('elra speaks', { mode: 'text', keywords: 'el?ra' })).toBeNull();
     });
 });
 
 // ---------------------------------------------------------------------------
-// regex trigger
+// keyword trigger — regex mode
 // ---------------------------------------------------------------------------
 
-describe('TRIGGER_REGISTRY.regex', () => {
-    const rx = TRIGGER_REGISTRY.regex;
+describe('TRIGGER_REGISTRY.keyword (regex mode)', () => {
+    const kw = TRIGGER_REGISTRY.keyword;
 
     it('returns null for an empty pattern', async () => {
-        expect(await rx.test('hello world', { pattern: '' })).toBeNull();
+        expect(await kw.test('hello world', { mode: 'regex', pattern: '' })).toBeNull();
     });
 
     it('matches text with a plain regex pattern', async () => {
-        expect(await rx.test('hello world', { pattern: 'world' })).toBe('world');
+        expect(await kw.test('hello world', { mode: 'regex', pattern: 'world' })).toBe('world');
     });
 
     it('returns null when the pattern does not match', async () => {
-        expect(await rx.test('hello world', { pattern: 'dragon' })).toBeNull();
+        expect(await kw.test('hello world', { mode: 'regex', pattern: 'dragon' })).toBeNull();
     });
 
     it('uses the regex returned by parseRegexFromString when available', async () => {
         vi.mocked(parseRegexFromString).mockReturnValue(/\bdragon\b/i);
-        expect(await rx.test('A Dragon appeared', { pattern: '/dragon/i' })).toBe('Dragon');
+        expect(await kw.test('A Dragon appeared', { mode: 'regex', pattern: '/dragon/i' })).toBe('Dragon');
     });
 
     it('returns null for an invalid pattern that parseRegexFromString cannot parse', async () => {
         vi.mocked(parseRegexFromString).mockReturnValue(null);
-        expect(await rx.test('text', { pattern: '[invalid' })).toBeNull();
+        expect(await kw.test('text', { mode: 'regex', pattern: '[invalid' })).toBeNull();
     });
 });
 
 // ---------------------------------------------------------------------------
-// chatComplete trigger
+// keyword trigger — lorebook mode
 // ---------------------------------------------------------------------------
 
-describe('TRIGGER_REGISTRY.chatComplete', () => {
-    it('returns null when chat is not complete', async () => {
-        setChatComplete(false);
-        expect(await TRIGGER_REGISTRY.chatComplete.test('any text', {})).toBeNull();
+describe('TRIGGER_REGISTRY.keyword (lorebook mode)', () => {
+    const kw = TRIGGER_REGISTRY.keyword;
+
+    it('returns null when no lorebook entries have matching keys', async () => {
+        vi.mocked(getSortedEntries).mockResolvedValue([
+            { comment: 'Elara', disable: false, key: ['elara'], keysecondary: [] },
+        ]);
+        expect(await kw.test('a peaceful day', { mode: 'lorebook' })).toBeNull();
     });
 
-    it('returns "chat complete" when chat is complete', async () => {
-        setChatComplete(true);
-        expect(await TRIGGER_REGISTRY.chatComplete.test('any text', {})).toBe('chat complete');
+    it('returns the matched key when text contains a lorebook keyword', async () => {
+        vi.mocked(getSortedEntries).mockResolvedValue([
+            { comment: 'Elara', disable: false, key: ['elara'], keysecondary: [] },
+        ]);
+        expect(await kw.test('Elara arrived at the archive.', { mode: 'lorebook' })).toBe('elara');
+    });
+
+    it('skips disabled entries', async () => {
+        vi.mocked(getSortedEntries).mockResolvedValue([
+            { comment: 'Elara', disable: true, key: ['elara'], keysecondary: [] },
+        ]);
+        expect(await kw.test('Elara arrived.', { mode: 'lorebook' })).toBeNull();
+    });
+
+    it('returns null when getSortedEntries returns no entries', async () => {
+        vi.mocked(getSortedEntries).mockResolvedValue([]);
+        expect(await kw.test('elara dragon wizard', { mode: 'lorebook' })).toBeNull();
     });
 });
 
@@ -227,6 +249,43 @@ describe('TRIGGER_REGISTRY.varMatch', () => {
     it('returns null with notEmpty when variable is empty string', async () => {
         setTurnVar('result', '');
         expect(await vm.test('', { varName: 'result', operator: 'notEmpty' })).toBeNull();
+    });
+
+    it('notEquals fires when values differ', async () => {
+        setTurnVar('mood', 'sad');
+        expect(await vm.test('', { varName: 'mood', operator: 'notEquals', value: 'happy' })).toBe('sad');
+    });
+
+    it('notEquals does not fire when values are equal', async () => {
+        setTurnVar('mood', 'happy');
+        expect(await vm.test('', { varName: 'mood', operator: 'notEquals', value: 'happy' })).toBeNull();
+    });
+
+    it('notEquals returns null when variable is not set', async () => {
+        expect(await vm.test('', { varName: 'unset_var', operator: 'notEquals', value: 'x' })).toBeNull();
+    });
+
+    it('set fires when variable exists', async () => {
+        setTurnVar('flag', 'yes');
+        expect(await vm.test('', { varName: 'flag', operator: 'set' })).toBe('yes');
+    });
+
+    it('set returns "set" sentinel when variable exists but is empty string', async () => {
+        setTurnVar('flag', '');
+        expect(await vm.test('', { varName: 'flag', operator: 'set' })).toBe('set');
+    });
+
+    it('set returns null when variable is not in turnVars', async () => {
+        expect(await vm.test('', { varName: 'missing', operator: 'set' })).toBeNull();
+    });
+
+    it('notSet fires with "unset" when variable is absent', async () => {
+        expect(await vm.test('', { varName: 'absent', operator: 'notSet' })).toBe('unset');
+    });
+
+    it('notSet returns null when variable exists', async () => {
+        setTurnVar('present', 'value');
+        expect(await vm.test('', { varName: 'present', operator: 'notSet' })).toBeNull();
     });
 });
 

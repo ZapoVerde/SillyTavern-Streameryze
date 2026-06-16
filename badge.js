@@ -31,7 +31,8 @@
  */
 
 import { extension_settings }                        from '../../../extensions.js';
-import { resolveLbQueryTokens, getTurnVarsSnapshot } from './triggers.js';
+import { resolveLbQueryTokens }  from './triggers/lb-query.js';
+import { getTurnVarsSnapshot }   from './triggers/turn-vars.js';
 
 const EXT_NAME = 'triggeryze';
 

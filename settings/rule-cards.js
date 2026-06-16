@@ -1,33 +1,30 @@
 /**
  * @file st-extensions/SillyTavern-Triggeryze/settings/rule-cards.js
- * @stamp {"utc":"2026-06-15T12:00:00.000Z"}
- * @architectural-role UI — rule card rendering and rule list assembly
+ * @stamp {"utc":"2026-06-16T00:00:00.000Z"}
+ * @architectural-role UI — ruleset and rule card rendering
  * @description
- * Renders the rule composer panel: each rule card (WHEN/DO sections, header controls),
- * ingredient rows (trigger and action config widgets), the add-ingredient picker, and
- * the clobber-conflict warning. Accepts a save callback so this module does not need
- * to import profiles.js, keeping the dependency graph acyclic.
+ * Renders the rule composer panel: ruleset group cards (collapsible, enable/disable),
+ * rule cards (WHEN/DO sections, header controls), ingredient rows (trigger and action
+ * config widgets), and clobber-conflict warnings. Accepts a save callback so this module
+ * does not need to import profiles.js, keeping the dependency graph acyclic.
  *
  * @api-declaration
- * renderRules(save) — empties and rebuilds the #trg_rules_list element; save is called by
- *                     any handler that mutates settings without doing a full re-render
+ * renderRules(save) — empties and rebuilds #trg_rules_list with all ruleset cards;
+ *                     save is called by any handler that mutates settings without a full re-render
  *
  * @contract
  *   assertions:
  *     purity:          none — reads extension_settings, writes DOM
- *     state_ownership: [_expandedRules, _expandedIngredients]
+ *     state_ownership: [_expandedRulesets, _expandedRules, _expandedIngredients]
  *     external_io:     reinjectRuleBadges (engine), file download (downloadJson)
  */
 
-import { extension_settings }                                          from '../../../../extensions.js';
-import { TRIGGER_REGISTRY }                                            from '../triggers.js';
-import { ACTION_REGISTRY, makeActionCtx }                              from '../actions/index.js';
-import { reinjectRuleBadges }                                          from '../engine.js';
+import { getSettings, makeId }                                             from './storage.js';
+import { exportRule, exportRuleset }                                       from './format.js';
+import { TRIGGER_REGISTRY }                                                from '../triggers.js';
+import { ACTION_REGISTRY, makeActionCtx }                                  from '../actions/index.js';
+import { reinjectRuleBadges }                                              from '../engine.js';
 
-const EXT_NAME    = 'triggeryze';
-const getSettings = () => extension_settings[EXT_NAME];
-
-function makeId() { return Math.random().toString(36).slice(2, 9); }
 function downloadJson(filename, data) {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url  = URL.createObjectURL(blob);
@@ -38,8 +35,12 @@ function downloadJson(filename, data) {
     URL.revokeObjectURL(url);
 }
 
+const _expandedRulesets    = new Set();
 const _expandedRules       = new Set();
-const _expandedIngredients  = new Set();
+const _expandedIngredients = new Set();
+
+// Active drag state — set in dragstart, cleared in dragend
+let _dragging = null; // { ruleId, rulesetId } | null
 
 function detectClobbers(rule) {
     const warnings = [];
@@ -96,8 +97,10 @@ function summarizeIngredient(item) {
         return kws.join(', ');
     }
     if (item.type === 'varMatch') {
-        const opSym = { equals: '=', notEquals: '≠', contains: '∋', set: 'set', notSet: 'unset' }[cfg.operator] ?? cfg.operator ?? '=';
-        return cfg.varName ? `${cfg.varName} ${opSym} ${cfg.value ?? ''}`.trim() : '';
+        const _noVal = ['notEmpty', 'set', 'notSet'];
+        const opSym  = { equals: '=', notEquals: '≠', contains: '∋', matches: '~', notEmpty: '≠ ""', set: 'set', notSet: '!set' }[cfg.operator] ?? cfg.operator ?? '=';
+        const val    = _noVal.includes(cfg.operator) ? '' : (cfg.value ?? '');
+        return cfg.varName ? `${cfg.varName} ${opSym}${val ? ' ' + val : ''}` : '';
     }
     if (item.type === 'sideCall') {
         const short = { replaceKeyword: 'replace kw', replaceParagraph: 'replace ¶', appendToMessage: 'append', insertMessage: 'insert', silent: 'silent' };
@@ -172,7 +175,7 @@ function renderAddButton(label, registry, onPick) {
     return $wrap;
 }
 
-function renderRuleCard(rule, ruleIdx, save) {
+function renderRuleCard(rule, ruleIdx, rsRules, allRules, save, rulesetId) {
     const s       = getSettings();
     const rebuild = () => { save(); renderRules(save); };
 
@@ -199,6 +202,7 @@ function renderRuleCard(rule, ruleIdx, save) {
 
     const $hdr = $(`
 <div class="trg-rule-header">
+    <span class="trg-drag-handle" title="Drag to reorder">⠿</span>
     <input type="checkbox" class="trg-rule-toggle" ${rule.enabled ? 'checked' : ''} title="Enable" />
     <input type="text" class="trg-rule-name" placeholder="Rule ${ruleIdx + 1}" />
     <span class="trg-rule-summary">${summary}</span>
@@ -213,23 +217,88 @@ function renderRuleCard(rule, ruleIdx, save) {
     $hdr.find('.trg-rule-name').on('input', function () { rule.name = this.value; save(); });
     $hdr.find('.trg-rule-export').on('click', () => {
         const label = (rule.name || `rule-${ruleIdx + 1}`).replace(/[^a-z0-9_-]/gi, '-').toLowerCase();
-        downloadJson(`triggeryze-${label}.json`, { version: 1, type: 'rule', rule: structuredClone(rule) });
+        downloadJson(`triggeryze-${label}.json`, exportRule(structuredClone(rule)));
     });
     $hdr.find('.trg-rule-dev').on('click', function () { rule.devMode = !rule.devMode; $(this).toggleClass('trg-dev-on'); save(); });
     $hdr.find('.trg-rule-clone').on('click', () => {
         const clone = structuredClone(rule);
         clone.id   = makeId();
         clone.name = (clone.name || `Rule ${ruleIdx + 1}`) + ' (copy)';
-        s.rules.splice(ruleIdx + 1, 0, clone);
+        rsRules.splice(ruleIdx + 1, 0, clone);
         rebuild();
     });
-    $hdr.find('.trg-rule-delete').on('click', () => { s.rules.splice(ruleIdx, 1); rebuild(); });
+    $hdr.find('.trg-rule-delete').on('click', () => { rsRules.splice(ruleIdx, 1); rebuild(); });
     $hdr.find('.trg-rule-collapse').on('click', () => {
         $card.toggleClass('trg-collapsed');
         if ($card.hasClass('trg-collapsed')) _expandedRules.delete(rule.id);
         else _expandedRules.add(rule.id);
     });
     $card.append($hdr);
+
+    // ── Drag-and-drop ────────────────────────────────────────────────────────
+    // Only become draggable while the mouse is down on the handle
+    $card.on('mousedown', '.trg-drag-handle', () => $card.attr('draggable', 'true'));
+    $card.on('mouseup',   '.trg-drag-handle', () => $card.removeAttr('draggable'));
+
+    $card.on('dragstart', e => {
+        if (!$card.attr('draggable')) { e.preventDefault(); return; }
+        _dragging = { ruleId: rule.id, rulesetId };
+        e.originalEvent.dataTransfer.effectAllowed = 'move';
+        e.originalEvent.dataTransfer.setData('text/plain', JSON.stringify(_dragging));
+        setTimeout(() => $card.addClass('trg-drag-source'), 0);
+    });
+
+    $card.on('dragend', () => {
+        _dragging = null;
+        $card.removeAttr('draggable').removeClass('trg-drag-source trg-drag-above trg-drag-below');
+    });
+
+    $card.on('dragover', e => {
+        if (!_dragging) return;
+        e.preventDefault();
+        e.originalEvent.dataTransfer.dropEffect = 'move';
+        const rect   = $card[0].getBoundingClientRect();
+        const isAbove = e.originalEvent.clientY < rect.top + rect.height / 2;
+        $card.toggleClass('trg-drag-above', isAbove).toggleClass('trg-drag-below', !isAbove);
+    });
+
+    $card.on('dragleave', e => {
+        if (!$card[0].contains(e.originalEvent.relatedTarget)) {
+            $card.removeClass('trg-drag-above trg-drag-below');
+        }
+    });
+
+    $card.on('drop', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        $card.removeClass('trg-drag-above trg-drag-below');
+
+        const raw = e.originalEvent.dataTransfer.getData('text/plain');
+        if (!raw) return;
+        let src;
+        try { src = JSON.parse(raw); } catch { return; }
+        if (!src.ruleId) return;
+
+        const rect    = $card[0].getBoundingClientRect();
+        const isAbove = e.originalEvent.clientY < rect.top + rect.height / 2;
+
+        const s     = getSettings();
+        const srcRs = s.rulesets.find(rs => rs.id === src.rulesetId);
+        if (!srcRs) return;
+        const srcIdx = srcRs.rules.findIndex(r => r.id === src.ruleId);
+        if (srcIdx === -1) return;
+        const [moved] = srcRs.rules.splice(srcIdx, 1);
+
+        const dstRs = s.rulesets.find(rs => rs.id === rulesetId);
+        if (!dstRs) { srcRs.rules.splice(srcIdx, 0, moved); return; }
+
+        const dstIdx = dstRs.rules.findIndex(r => r.id === rule.id);
+        const insertAt = dstIdx === -1 ? dstRs.rules.length
+            : (isAbove ? dstIdx : dstIdx + 1);
+        // If same ruleset and moving downward, the splice above shifted indices
+        dstRs.rules.splice(insertAt, 0, moved);
+        rebuild();
+    });
 
     // ── Body ─────────────────────────────────────────────────────────────────
     const $body = $('<div class="trg-rule-body">');
@@ -238,11 +307,11 @@ function renderRuleCard(rule, ruleIdx, save) {
     const $whenHdr = $(`
 <div class="trg-section-label">
     WHEN <select class="trg-logic-select">
-        <option value="any" ${rule.triggerLogic !== 'all' ? 'selected' : ''}>any</option>
-        <option value="all" ${rule.triggerLogic === 'all' ? 'selected' : ''}>all</option>
+        <option value="any" ${rule.when !== 'all' ? 'selected' : ''}>any</option>
+        <option value="all" ${rule.when === 'all' ? 'selected' : ''}>all</option>
     </select> of:
 </div>`);
-    $whenHdr.find('.trg-logic-select').on('change', function () { rule.triggerLogic = this.value; rebuild(); });
+    $whenHdr.find('.trg-logic-select').on('change', function () { rule.when = this.value; rebuild(); });
     $when.append($whenHdr);
 
     const $triggers = $('<div class="trg-ingredient-list">');
@@ -278,7 +347,7 @@ function renderRuleCard(rule, ruleIdx, save) {
             ACTION_REGISTRY,
             (newConfig) => { rule.actions[aidx].config = newConfig; save(); },
             () => { rule.actions.splice(aidx, 1); rebuild(); },
-            makeActionCtx(rule, aidx, s.rules),
+            makeActionCtx(rule, aidx, allRules),
             `${rule.id}:a:${aidx}`
         );
         $row.on('focusout', '.trg-outvar-field', () => rebuild());
@@ -308,12 +377,107 @@ function renderRuleCard(rule, ruleIdx, save) {
     return $card;
 }
 
+function renderRulesetCard(ruleset, rsIdx, allRules, save) {
+    const s       = getSettings();
+    const rebuild = () => { save(); renderRules(save); };
+    const isExpanded = _expandedRulesets.has(ruleset.id);
+
+    const $card = $(`<div class="trg-ruleset-card" data-ruleset-id="${ruleset.id}">`);
+
+    const $hdr = $(`
+<div class="trg-ruleset-header">
+    <button class="trg-btn-icon trg-rs-collapse" title="Collapse"><i class="fa-solid fa-chevron-${isExpanded ? 'down' : 'right'}"></i></button>
+    <input type="checkbox" class="trg-rs-toggle" ${ruleset.enabled !== false ? 'checked' : ''} title="Enable ruleset" />
+    <input type="text" class="trg-rs-name" placeholder="Group ${rsIdx + 1}" value="${(ruleset.name ?? '').replace(/"/g, '&quot;')}" />
+    <button class="trg-btn-icon trg-rs-export" title="Export ruleset as JSON"><i class="fa-solid fa-file-export"></i></button>
+    <button class="trg-btn-icon trg-rs-delete" title="Delete ruleset">✕</button>
+</div>`);
+
+    $hdr.find('.trg-rs-toggle').on('change', function () { ruleset.enabled = this.checked; rebuild(); });
+    $hdr.find('.trg-rs-name').on('input', function () { ruleset.name = this.value; save(); });
+    $hdr.find('.trg-rs-export').on('click', () => {
+        const label = (ruleset.name || `group-${rsIdx + 1}`).replace(/[^a-z0-9_-]/gi, '-').toLowerCase();
+        downloadJson(`triggeryze-${label}.json`, exportRuleset(structuredClone(ruleset)));
+    });
+    $hdr.find('.trg-rs-delete').on('click', () => {
+        if (s.rulesets.length === 1) {
+            toastr.warning('Cannot delete the last ruleset.', 'Triggeryze');
+            return;
+        }
+        s.rulesets.splice(rsIdx, 1);
+        rebuild();
+    });
+    $hdr.find('.trg-rs-collapse').on('click', () => {
+        const nowExpanded = _expandedRulesets.has(ruleset.id);
+        if (nowExpanded) _expandedRulesets.delete(ruleset.id);
+        else             _expandedRulesets.add(ruleset.id);
+        rebuild();
+    });
+    $card.append($hdr);
+
+    if (isExpanded) {
+        const $body = $('<div class="trg-ruleset-body">');
+        (ruleset.rules ?? []).forEach((rule, ruleIdx) => {
+            $body.append(renderRuleCard(rule, ruleIdx, ruleset.rules, allRules, save, ruleset.id));
+        });
+
+        // Drop into empty space within this body (appends to end of ruleset)
+        $body.on('dragover', e => {
+            if (!_dragging || $(e.target).closest('.trg-rule-card').length) return;
+            e.preventDefault();
+            e.originalEvent.dataTransfer.dropEffect = 'move';
+            $body.addClass('trg-drag-target');
+        });
+        $body.on('dragleave', e => {
+            if (!$body[0].contains(e.originalEvent.relatedTarget)) {
+                $body.removeClass('trg-drag-target');
+            }
+        });
+        $body.on('drop', e => {
+            if ($(e.target).closest('.trg-rule-card').length) return; // card handler took it
+            e.preventDefault();
+            e.stopPropagation();
+            $body.removeClass('trg-drag-target');
+
+            const raw = e.originalEvent.dataTransfer.getData('text/plain');
+            if (!raw) return;
+            let src;
+            try { src = JSON.parse(raw); } catch { return; }
+            if (!src.ruleId) return;
+
+            const s     = getSettings();
+            const srcRs = s.rulesets.find(rs => rs.id === src.rulesetId);
+            if (!srcRs) return;
+            const srcIdx = srcRs.rules.findIndex(r => r.id === src.ruleId);
+            if (srcIdx === -1) return;
+            const [moved] = srcRs.rules.splice(srcIdx, 1);
+
+            const dstRs = s.rulesets.find(rs => rs.id === ruleset.id);
+            if (!dstRs) { srcRs.rules.splice(srcIdx, 0, moved); return; }
+            dstRs.rules.push(moved);
+            rebuild();
+        });
+        const $addRule = $('<button class="trg-add-btn trg-rs-add-rule">+ rule</button>');
+        $addRule.on('click', () => {
+            ruleset.rules.push({ id: makeId(), enabled: true, when: 'any', triggers: [], actions: [] });
+            rebuild();
+        });
+        $body.append($addRule);
+        $card.append($body);
+    }
+
+    return $card;
+}
+
 export function renderRules(save) {
-    const rules = getSettings().rules ?? [];
-    const $list = $('#trg_rules_list').empty();
-    if (!rules.length) {
-        $list.append('<p class="trg-empty">No rules yet. Add one below.</p>');
+    const s        = getSettings();
+    const rulesets = s.rulesets ?? [];
+    const allRules = rulesets.flatMap(rs => rs.rules ?? []);
+    const $list    = $('#trg_rules_list').empty();
+
+    if (!rulesets.length) {
+        $list.append('<p class="trg-empty">No groups yet. Add one below.</p>');
         return;
     }
-    rules.forEach((rule, i) => $list.append(renderRuleCard(rule, i, save)));
+    rulesets.forEach((rs, i) => $list.append(renderRulesetCard(rs, i, allRules, save)));
 }

@@ -29,7 +29,7 @@
  *     external_io:     none directly; all IO is in imported modules
  */
 
-import { stop, stopContinue } from './stop.js';
+import { stop } from './stop.js';
 import { replace }            from './replace.js';
 import { sideCall }           from './side-call.js';
 import { compose }            from './compose.js';
@@ -40,7 +40,6 @@ import { setStVar }           from './set-stvar.js';
 
 export const ACTION_REGISTRY = {
     stop,
-    stopContinue,
     replace,
     sideCall,
     compose,

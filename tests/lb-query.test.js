@@ -1,9 +1,12 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 
-vi.mock('../../../../scripts/world-info.js', () => ({
+// lb-query.js lives in triggers/ and uses 5-up paths to reach ST scripts.
+vi.mock('../../../../../scripts/world-info.js', () => ({
     getSortedEntries:          vi.fn(async () => []),
+    loadWorldInfo:             vi.fn(async () => null),
     parseRegexFromString:      vi.fn(() => null),
     world_info_case_sensitive: false,
+    world_names:               [],
 }));
 vi.mock('../../../../scripts/variables.js', () => ({
     getLocalVariable:  vi.fn(() => null),
@@ -14,8 +17,9 @@ vi.mock('../../../../../scripts/variables.js', () => ({
     getGlobalVariable: vi.fn(() => null),
 }));
 
-import { resolveLbQueryTokens, clearWiCache } from '../triggers.js';
-import { getSortedEntries }                    from '../../../../scripts/world-info.js';
+import { resolveLbQueryTokens, clearWiCache } from '../triggers/lb-query.js';
+import * as WorldInfo                          from '../../../../../scripts/world-info.js';
+const { getSortedEntries, loadWorldInfo }      = WorldInfo;
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -421,5 +425,112 @@ describe('entry cache', () => {
         clearWiCache();
         await resolveLbQueryTokens('{{lbBooks}}', {});
         expect(getSortedEntries).toHaveBeenCalledTimes(2);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Scope argument — active / all / inactive
+// ---------------------------------------------------------------------------
+
+// Fixtures: Characters is active, Hidden is inactive (on disk but not in WI slots)
+const INACTIVE = [
+    { comment: 'Villain', content: 'The antagonist.', key: ['villain'], world: 'Hidden', disable: false },
+    { comment: 'Minion',  content: 'Lackey.',          key: ['minion'],  world: 'Hidden', disable: false },
+];
+
+function _toEntries(arr) {
+    return Object.fromEntries(arr.map((e, i) => [String(i), e]));
+}
+
+describe('scope: all — loads from all world_names', () => {
+    beforeEach(() => {
+        // Active: Characters lorebook
+        vi.mocked(getSortedEntries).mockResolvedValue(CHAR);
+        // On disk: Characters + Hidden
+        WorldInfo.world_names = ['Characters', 'Hidden'];
+        vi.mocked(loadWorldInfo).mockImplementation(async name => {
+            if (name === 'Characters') return { entries: _toEntries(CHAR) };
+            if (name === 'Hidden')     return { entries: _toEntries(INACTIVE) };
+            return null;
+        });
+    });
+
+    it('returns titles from both active and inactive lorebooks', async () => {
+        const r = await resolveLbQueryTokens('{{lbTitles:::::all}}', {});
+        expect(r).toContain('Elara');
+        expect(r).toContain('Villain');
+    });
+
+    it('can filter to a specific inactive lorebook by name (bracket literal)', async () => {
+        const r = await resolveLbQueryTokens('{{lbTitles:[Hidden]::::all}}', {});
+        expect(r).toContain('Villain');
+        expect(r).not.toContain('Elara');
+    });
+
+    it('returns keys from all lorebooks', async () => {
+        const r = await resolveLbQueryTokens('{{lbKeys:::::all}}', {});
+        expect(r).toContain('elara');
+        expect(r).toContain('villain');
+    });
+
+    it('calls loadWorldInfo for each entry in world_names', async () => {
+        await resolveLbQueryTokens('{{lbBooks:::::all}}', {});
+        expect(loadWorldInfo).toHaveBeenCalledWith('Characters');
+        expect(loadWorldInfo).toHaveBeenCalledWith('Hidden');
+    });
+
+    it('handles a loadWorldInfo returning null without throwing', async () => {
+        WorldInfo.world_names = ['Characters', 'Broken'];
+        vi.mocked(loadWorldInfo).mockImplementation(async name =>
+            name === 'Characters' ? { entries: _toEntries(CHAR) } : null,
+        );
+        const r = await resolveLbQueryTokens('{{lbTitles:::::all}}', {});
+        expect(r).toContain('Elara');
+    });
+});
+
+describe('scope: inactive — only lorebooks not in active set', () => {
+    beforeEach(() => {
+        vi.mocked(getSortedEntries).mockResolvedValue(CHAR);
+        WorldInfo.world_names = ['Characters', 'Hidden'];
+        vi.mocked(loadWorldInfo).mockImplementation(async name => {
+            if (name === 'Characters') return { entries: _toEntries(CHAR) };
+            if (name === 'Hidden')     return { entries: _toEntries(INACTIVE) };
+            return null;
+        });
+    });
+
+    it('excludes active lorebook entries', async () => {
+        const r = await resolveLbQueryTokens('{{lbTitles:::::inactive}}', {});
+        expect(r).not.toContain('Elara');
+        expect(r).not.toContain('Marcus');
+    });
+
+    it('includes entries from lorebooks not in the active set', async () => {
+        const r = await resolveLbQueryTokens('{{lbTitles:::::inactive}}', {});
+        expect(r).toContain('Villain');
+        expect(r).toContain('Minion');
+    });
+
+    it('returns keys from inactive lorebooks only', async () => {
+        const r = await resolveLbQueryTokens('{{lbKeys:::::inactive}}', {});
+        expect(r).toContain('villain');
+        expect(r).not.toContain('elara');
+    });
+});
+
+describe('scope: active (default) — unchanged behaviour', () => {
+    it('explicit active scope behaves the same as no scope', async () => {
+        vi.mocked(getSortedEntries).mockResolvedValue(CHAR);
+        const withScope    = await resolveLbQueryTokens('{{lbTitles:::::active}}', {});
+        clearWiCache();
+        const withoutScope = await resolveLbQueryTokens('{{lbTitles}}', {});
+        expect(withScope).toBe(withoutScope);
+    });
+
+    it('does not call loadWorldInfo for active scope', async () => {
+        vi.mocked(getSortedEntries).mockResolvedValue(CHAR);
+        await resolveLbQueryTokens('{{lbTitles}}', {});
+        expect(loadWorldInfo).not.toHaveBeenCalled();
     });
 });

@@ -20,15 +20,15 @@
 
 import { eventSource, event_types, name1, name2, appendMediaToMessage, callPopup } from '../../../../../script.js';
 import { SOURCE_LABELS, loadModelsForSource, generatePreviewBlob, generateAndUpload } from '../imageGen.js';
-import { interpolate, resolveLbTokens } from './template.js';
-import { esc, buildHistoryText } from './text.js';
+import { interpolate, resolveLbTokens, resolveHistoryTokens } from './template.js';
+import { esc } from './text.js';
 import { renderVarLegend } from './var-legend.js';
 
 export const imageGen = {
     label: 'generate image',
     stage: 'postMessage',
     templateFields: cfg => [cfg.prompt],
-    defaultConfig: { source: 'pollinations', model: '', comfyUiUrl: '', prompt: '{{keyword}}', historyTurns: 0, outputVar: '', persist: true },
+    defaultConfig: { source: 'pollinations', model: '', comfyUiUrl: '', prompt: '{{keyword}}', outputVar: '', persist: true },
 
     async execute(config, { matchedKeyword, messageId, stCtx, isCurrentGeneration, vars, highlighted = '' }) {
         const msg = stCtx?.chat?.[messageId];
@@ -38,14 +38,15 @@ export const imageGen = {
         const kwEsc          = (matchedKeyword ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const firstMatch     = kwEsc ? new RegExp(kwEsc, 'i').exec(msg.mes ?? '') : null;
         const upTo           = firstMatch ? (msg.mes ?? '').slice(0, firstMatch.index) : '';
-        const historyText    = buildHistoryText(stCtx?.chat, messageId, config.historyTurns ?? 0);
-        const resolvedPrompt = await resolveLbTokens(config.prompt ?? '', matchedKeyword, highlighted, vars);
+        const resolvedPrompt = resolveHistoryTokens(
+            await resolveLbTokens(config.prompt ?? '', matchedKeyword, highlighted, vars, messageId),
+            stCtx?.chat, messageId, vars ?? {},
+        );
 
         const prompt = interpolate(resolvedPrompt, {
             keyword:  matchedKeyword ?? '',
             message:  msg.mes ?? '',
             'up-to':  upTo,
-            history:  historyText,
             char:     name2 ?? '',
             user:     name1 ?? '',
         }, vars ?? {});
@@ -118,18 +119,12 @@ export const imageGen = {
             value="${esc(config.comfyUiUrl || '')}" placeholder="http://127.0.0.1:8188" />
     </div>
     <div class="trg-sc-row">
-        <label class="trg-sc-lbl">history</label>
-        <input type="number" class="trg-ig-history" min="0" max="20" step="1"
-            value="${config.historyTurns ?? 0}" style="width:54px" />
-        <small class="trg-sc-hint-inline">turns  —  use {{history}} in prompt</small>
-    </div>
-    <div class="trg-sc-row">
         <label class="trg-sc-lbl">save as</label>
         <input type="text" class="trg-ig-outvar text_pole trg-outvar-field" placeholder="variable name (optional)" value="${esc(config.outputVar ?? '')}" style="flex:1" />
     </div>
     ${renderVarLegend(ctx?.priorActions, ctx?.crossRuleVars)}
     <textarea class="trg-ig-prompt text_pole" rows="2"
-        placeholder="Image prompt — {{keyword}} {{up-to}} {{message}} {{history}} {{char}} {{user}}">${esc(config.prompt || '')}</textarea>
+        placeholder="Image prompt — {{keyword}} {{up-to}} {{message}} {{history:[2]}} {{char}} {{user}}">${esc(config.prompt || '')}</textarea>
     <div class="trg-sc-row">
         <label class="trg-check-row">
             <input type="checkbox" class="trg-ig-persist" ${(config.persist ?? true) ? 'checked' : ''} />
@@ -144,13 +139,12 @@ export const imageGen = {
 </div>`);
 
         const readConfig = () => ({
-            source:       $el.find('.trg-ig-source').val() || 'pollinations',
-            model:        ($el.find('.trg-ig-model-ctrl select, .trg-ig-model-ctrl input').first().val() ?? '').trim(),
-            comfyUiUrl:   $el.find('.trg-ig-comfy').val()?.trim() || '',
-            historyTurns: parseInt($el.find('.trg-ig-history').val(), 10) || 0,
-            outputVar:    $el.find('.trg-ig-outvar').val()?.trim() || '',
-            prompt:       $el.find('.trg-ig-prompt').val() || '',
-            persist:      $el.find('.trg-ig-persist').prop('checked'),
+            source:     $el.find('.trg-ig-source').val() || 'pollinations',
+            model:      ($el.find('.trg-ig-model-ctrl select, .trg-ig-model-ctrl input').first().val() ?? '').trim(),
+            comfyUiUrl: $el.find('.trg-ig-comfy').val()?.trim() || '',
+            outputVar:  $el.find('.trg-ig-outvar').val()?.trim() || '',
+            prompt:     $el.find('.trg-ig-prompt').val() || '',
+            persist:    $el.find('.trg-ig-persist').prop('checked'),
         });
 
         const refreshModelControl = async (source, currentModel) => {
@@ -198,7 +192,7 @@ export const imageGen = {
         });
 
         $el.find('.trg-ig-comfy').on('input', () => onChange(readConfig()));
-        $el.find('.trg-ig-history, .trg-ig-outvar').on('input', () => onChange(readConfig()));
+        $el.find('.trg-ig-outvar').on('input', () => onChange(readConfig()));
         $el.find('.trg-ig-prompt').on('input', () => onChange(readConfig()));
         $el.find('.trg-ig-persist').on('change', () => onChange(readConfig()));
         $el.on('click', '.trg-var-inject', function () {

@@ -10,7 +10,7 @@ New to Triggeryze? Follow this example to automatically rewrite common AI writin
 
 ### Step 1: Create a rule
 
-Click **+ Rule**.
+Click **Add group** to create a new rule group, then click **+ rule** inside it.
 
 ### Step 2: Add a trigger
 
@@ -163,6 +163,32 @@ Possible result:
 The rest of the message remains unchanged.
 
 
+## Groups
+
+Rules are organized into named groups. Groups are purely organizational — the engine's fixed-point loop resolves variable dependencies across all groups regardless of arrangement, so groups can be freely rearranged without affecting how rules interact.
+
+Click **Add group** to create a new group. Newly created groups appear below the existing ones.
+
+A disabled group removes all its rules from engine consideration for the turn, identical to disabling each rule individually.
+
+### Group controls
+
+Each group header has a row of controls:
+
+| Control | Action |
+|---|---|
+| Collapse (chevron) | Collapse or expand the group body |
+| Checkbox | Enable or disable all rules in the group at once |
+| Name field | Edit the group's display name |
+| Export | Download the group and all its rules as a JSON file |
+| ✕ | Delete the group and all its rules |
+
+### Adding rules
+
+Click **+ rule** inside a group to add a new rule to that group.
+
+---
+
 ## Rules
 
 A rule pairs one or more triggers with one or more actions. When the AI generates a response, Triggeryze evaluates every enabled rule. If the trigger conditions are met, the actions run.
@@ -175,6 +201,7 @@ Each rule header exposes a row of controls:
 
 | Control | Action |
 |---|---|
+| Drag handle (⠿) | Drag to reorder this rule within its group or move it to a different group |
 | Checkbox | Enable or disable the rule without deleting it |
 | Name field | Edit the rule's display name |
 | DEV | Toggle dev mode for this rule — see [Dev mode](#dev-mode) |
@@ -236,13 +263,11 @@ The full match (or first capture group, if the pattern uses captures) becomes `{
 
 Fires when a specific SillyTavern lifecycle event occurs. Choose the event from the dropdown.
 
-**chat complete** — fires once after each AI message is fully received. During streaming it does not fire — only after the last token is committed. In non-streaming mode it fires immediately when the response arrives. Designed for postMessage-stage actions (call LLM, replace, generate image, compose variable). `{{keyword}}` is set to `chat complete`.
+**chat complete** — fires once after each AI message is fully received. During streaming it does not fire — only after the last token is committed. In non-streaming mode it fires immediately when the response arrives. Designed for postMessage-stage actions (call LLM, replace, generate image, compose variable). `{{keyword}}` is set to `MESSAGE_RECEIVED`.
 
 **generation started** — fires at the very beginning of a new AI turn, before any tokens arrive. Use this to clear or reset variables at the start of each turn, prepare state, or run slash commands that need to execute before the response begins. `{{keyword}}` is set to `GENERATION_STARTED`. Common pattern: a generation started rule with a slash command action that clears a SillyTavern variable used to accumulate options across turns.
 
-**message rendered** — fires each time a message is rendered to the DOM. This includes on chat reload, which means it may fire for every message in the chat when the page loads. Use with care and consider adding a condition trigger (using AND logic) to limit execution to specific circumstances.
-
-`{{keyword}}` is set to the internal event name when the trigger fires.
+**message rendered** — fires each time a message is rendered to the DOM. This includes on chat reload, which means it may fire for every message in the chat when the page loads. Use with care and consider adding a condition trigger (using AND logic) to limit execution to specific circumstances. `{{keyword}}` is set to `CHARACTER_MESSAGE_RENDERED`.
 
 ### Variable match
 
@@ -253,15 +278,53 @@ Configure a variable name, an operator, and a value to compare against:
 | Operator | Fires when |
 |---|---|
 | equals | The variable's value is exactly the target string |
+| not equals | The variable's value is not exactly the target string |
 | contains | The variable's value contains the target string (case-insensitive) |
 | matches regex | The variable's value matches the regular expression |
 | not empty | The variable has any non-blank value |
+| is set | The variable exists this turn, regardless of value |
+| is not set | The variable does not exist this turn |
 
 The preview below the config shows the variable's current value from the last turn, so you can verify the upstream rule is producing what you expect.
 
 If the variable has not been set this turn, the trigger does not fire and a warning is written to the browser console.
 
 `{{keyword}}` is set to the variable's actual value when this trigger fires.
+
+### Condition
+
+Fires when a boolean expression over ST variables evaluates to true. Use this to gate any rule on game state without needing a dedicated variable match trigger for each individual comparison.
+
+Write the expression in the text field using the following syntax:
+
+**Variable prefixes:**
+- `chatvar::name` — reads a chat-scoped (local) SillyTavern variable
+- `globalvar::name` — reads a global SillyTavern variable
+- bare `name` — reads a turn variable set by an earlier rule this turn
+
+**Operators:** `< > <= >= = != matches contains is empty in (…)`
+
+**Combinators:** `AND OR !` and `( )` for grouping
+
+Examples:
+
+```
+chatvar::stats.hp < 20
+chatvar::gold >= 100 AND chatvar::stats.hp > 0
+globalvar::questPhase = "2" OR globalvar::questPhase = "3"
+!(chatvar::inventory contains "sword")
+chatvar::class in (warrior, paladin, ranger)
+```
+
+Combine with other triggers using AND logic to add a probability or keyword gate on top of a state check.
+
+### Probability
+
+Fires with the given probability each generation. Set **chance** to a number from 0 to 100; the default is 50.
+
+Use this on its own for a rule that fires half the time, or combine it with other triggers using AND logic to make any existing rule probabilistic — for example, a keyword match that only acts on 30% of matches.
+
+A chance of 0 never fires; a chance of 100 always fires.
 
 ### Badge
 
@@ -329,15 +392,9 @@ Halts the AI response the moment the keyword is detected. The partial message is
 
 To also remove the keyword, add a separate replace rule that matches the same keyword and leaves the replacement blank.
 
+Enable the **and continue** checkbox to resume generation immediately after stopping. The resumed response starts fresh from the stop point, with any lorebook entries the keyword activated now present in context. Use this to inject lorebook context mid-response without manual intervention.
+
 Requires streaming to be enabled.
-
-### Stop + continue
-
-**Stage: stream**
-
-Stops the response and immediately resumes generation. The resumed response starts fresh from the stop point, with any lorebook entries the keyword would have activated now present in context.
-
-Use this to inject lorebook context mid-response without manual intervention. Requires streaming.
 
 ### Replace
 
@@ -369,7 +426,7 @@ Fires an LLM request when the rule matches and applies the result to the message
 
 **Calls** — *Once* sends one request and uses the same result for every keyword instance. *Per match* sends an independent request for each occurrence, each with its own `{{up-to}}` context.
 
-**History** — include N prior chat turns in the prompt as `{{history}}`.
+**History** — use `{{history:[N]}}` anywhere in the prompt to include the last N turn-pairs of chat history. N can be a literal in brackets (`{{history:[2]}}`) or a turn variable name (`{{history:turns}}`). See [Variables and templates](#variables-and-templates).
 
 **Save as** — store the result in a named variable. Later actions in the same rule can reference it as `{{variableName}}`.
 
@@ -399,7 +456,7 @@ Generates an image when the rule fires and attaches it to the message.
 
 **Model** — the model to use. Auto-populated from the selected source's model list.
 
-**History** — include N prior chat turns as `{{history}}` in the image prompt.
+**History** — use `{{history:[N]}}` in the image prompt to include the last N turn-pairs of chat history.
 
 **Save as** — stores the uploaded image path in a named variable for use by later actions.
 
@@ -482,18 +539,18 @@ Available in every template field, in every action:
 | `{{up-to}}` | All message text before the first keyword occurrence |
 | `{{paragraph}}` | The paragraph containing the keyword |
 | `{{message}}` | The full message text |
-| `{{history}}` | Recent chat history, N turns (configured per action) |
+| `{{history:[2]}}` | Last 2 turn-pairs of chat history — N in brackets is a literal; bare name reads a turn variable (`{{history:turns}}`) |
 | `{{char}}` | Character name |
 | `{{user}}` | User name |
-| `{{getLBcontent keyword}}` | Lorebook entry matching the trigger keyword — see [Lorebook lookup in templates](#lorebook-lookup-in-templates) |
-| `{{getLBcontent highlighted}}` | Lorebook entry matching the selected text from a badge button click |
-| `{{getLBcontent myVar}}` | Lorebook entry matching the value of rule variable `myVar` |
-| `{{getLBcontent [Entry Name]}}` | Lorebook entry by literal title |
 | `{{highlighted}}` | Text selected in the browser when a badge button was clicked; empty string for all other trigger types |
 | `{{lbTitles:...}}` | Comma-separated list of lorebook entry titles — see [Lorebook query tokens](#lorebook-lookup-in-templates) |
 | `{{lbKeys:...}}` | Comma-separated list of lorebook trigger keys — same syntax |
 | `{{lbContent:...}}` | Body of a lorebook entry — same syntax |
 | `{{lbBooks:...}}` | Comma-separated names of lorebooks that contain matching entries — same syntax |
+| `{{psName}}` | Names of every slot in the last generation's context stack — see [Prompt-slot tokens](#prompt-slot-tokens) |
+| `{{psName:[filter]:[mode]}}` | Names of matching prompt slots |
+| `{{psContent}}` | Content of the first slot in the last generation's context stack |
+| `{{psContent:[filter]:[mode]}}` | Content of matching prompt slots |
 
 ### Rule variables
 
@@ -561,50 +618,53 @@ Variable names in conditions are bare — no `{{}}` around them.
 
 ---
 
-## Lorebook lookup in templates
+### Template transforms
 
-Triggeryze provides two token families for pulling lorebook data into templates and keyword fields.
+String transforms run after all `{{varName}}` substitution and math evaluation. They accept a resolved value and return a modified string.
 
-### getLBcontent (entry content)
-
-Embeds a single lorebook entry's full content block:
-
-```
-{{getLBcontent keyword}}
-{{getLBcontent [Elara Voss]}}
-{{getLBcontent MyLorebook:[Elara Voss]}}
-```
-
-| Form | Looks up |
+| Transform | Effect |
 |---|---|
-| `keyword` | Entry whose title matches the matched keyword |
-| `highlighted` | Entry whose title matches the browser-selected text from a badge button click |
-| `myVar` | Entry whose title matches the value of rule variable `myVar` |
-| `Elara Voss` | Literal entry name (brackets optional, even for names with spaces) |
-| `MyLorebook:[Elara Voss]` | Literal name scoped to a specific lorebook |
+| `{{trim: val}}` | Strip leading and trailing whitespace and newlines |
+| `{{upper: val}}` | Convert to uppercase |
+| `{{lower: val}}` | Convert to lowercase |
+| `{{lines: N: val}}` | Keep the first N lines (splits on newline) |
+| `{{words: N: val}}` | Keep the first N whitespace-separated words |
+| `{{default: fallback: val}}` | Return `val` if non-empty after trim, otherwise `fallback` |
 
-Output format:
+`val` is typically a resolved variable reference. Inner `{{varName}}` tokens are substituted before the transform runs:
 
 ```
-Elara Voss:
-(elara, voss, beth)
-Senior archivist of the Conclave...
+{{trim: {{opts}}}}                         strip blank lines from LLM output before splitting
+{{lines: 4: {{opts}}}}                     keep the first 4 lines of opts
+{{upper: {{char}}}}                        character name in uppercase
+{{default: nothing yet: {{summary}}}}      fall back to "nothing yet" if summary is unset
 ```
 
-Title on the first line, trigger keys in parentheses (omitted if none), then the entry body. If no matching entry is found, the token collapses to an empty string and an error is written to the browser console.
+**Transforms and badge splitting.** When using a bottom badge with `split-on: \n` to render one badge per line of LLM output, wrap the label in `{{trim:}}` to prevent empty badges from trailing blank lines the model may have added:
+
+```
+label:    {{trim: {{opts}}}}
+split-on: \n
+```
+
+**`{{default:}}` note.** The fallback text may not contain a colon — the first `:` after `default:` is the separator between the fallback and the value. The value should always be a resolved `{{varName}}` reference; a bare unresolved name is passed through as a literal string.
+
+---
+
+## Lorebook lookup in templates
 
 ### LB query tokens
 
 A unified token family for querying lorebook data by filter. Useful in template fields and especially in keyword fields, where they expand to a comma-separated list of matching terms.
 
 ```
-{{lbTitles:[lbname]:[titlename]:[keyname]:[mode]}}
-{{lbKeys:[lbname]:[titlename]:[keyname]:[mode]}}
-{{lbContent:[lbname]:[titlename]:[keyname]:[mode]}}
-{{lbBooks:[lbname]:[titlename]:[keyname]:[mode]}}
+{{lbTitles:[lbname]:[titlename]:[keyname]:[mode]:[scope]}}
+{{lbKeys:[lbname]:[titlename]:[keyname]:[mode]:[scope]}}
+{{lbContent:[lbname]:[titlename]:[keyname]:[mode]:[scope]}}
+{{lbBooks:[lbname]:[titlename]:[keyname]:[mode]:[scope]}}
 ```
 
-All four positions are optional. Omit trailing positions or leave one empty (skip with `::`) to use its default.
+All five positions are optional. Omit trailing positions or leave one empty (skip with `::`) to use its default.
 
 **Argument 1 — lorebook filter (`[lbname]`):** Which lorebook(s) to search.
 
@@ -628,18 +688,30 @@ All four positions are optional. Omit trailing positions or leave one empty (ski
 | `first` | Only the first match (default for `lbContent`) |
 | `last` | Only the last match |
 
+**Argument 5 — scope:** Which lorebooks to consider.
+
+| Scope | Considers |
+|---|---|
+| *(omit)* | Active lorebooks only — the four WI sources ST loads each turn: global panel, character-attached, chat-pinned, persona |
+| `active` | Same as omitting — explicit form |
+| `all` | Every lorebook file on disk; use for lorebooks intentionally kept out of ST's WI slots |
+| `inactive` | Only lorebooks on disk that are not in any active slot (complement of `active`) |
+
 #### Examples
 
 ```
-{{lbTitles}}                                   — all entry titles across all lorebooks
-{{lbTitles:[Creatures]}}                       — titles from the Creatures lorebook
-{{lbKeys:[Creatures]:[dragon]}}                — keys of entries titled "dragon" in Creatures
-{{lbContent:[Creatures]:[dragon]::first}}      — body of the first entry titled "dragon"
-{{lbTitles:::dragon*}}                         — titles of entries with a key starting with "dragon"
-{{lbTitles:[MyLB]:::all}}                      — all titles from MyLB (explicit all)
-{{lbBooks}}                                    — names of all active lorebooks
-{{lbBooks:::[love]}}                           — which lorebooks have an entry with key "love"
-{{lbBooks::[Elara]}}                           — which lorebooks have an entry titled "Elara"
+{{lbTitles}}                                      — all entry titles across active lorebooks
+{{lbTitles:[Creatures]}}                          — titles from the Creatures lorebook
+{{lbKeys:[Creatures]:[dragon]}}                   — keys of entries titled "dragon" in Creatures
+{{lbContent:[Creatures]:[dragon]::first}}         — body of the first entry titled "dragon"
+{{lbTitles:::dragon*}}                            — titles of entries with a key starting with "dragon"
+{{lbTitles:[MyLB]:::all}}                         — all titles from MyLB (explicit all)
+{{lbBooks}}                                       — names of all active lorebooks
+{{lbBooks:::[love]}}                              — which lorebooks have an entry with key "love"
+{{lbBooks::[Elara]}}                              — which lorebooks have an entry titled "Elara"
+{{lbTitles::::all}}                               — titles from every lorebook on disk
+{{lbTitles:[Hidden]::::all}}                      — titles from the "Hidden" lorebook even if inactive
+{{lbTitles::::inactive}}                          — titles from lorebooks not currently in any WI slot
 ```
 
 Using a variable as a filter argument:
@@ -656,6 +728,70 @@ When an LB query token or turn variable appears in a keyword field, the preview 
 
 ---
 
+## Prompt-slot tokens
+
+`{{psName}}` and `{{psContent}}` surface the exact context stack that was sent to the main LLM for the most recent generation. This lets action templates reference the same World Info entries, RAG results, or any other named prompt slot that the model actually saw — useful for side-call prompts that should mirror the main call's context.
+
+Data is sourced from SillyTavern's `itemizedPrompts` snapshot, which captures the full `rawPrompt` (the array of messages sent to the API) at generation time. Slot names are resolved through the currently loaded PromptManager preset; system slots (`worldInfoBefore`, `main`, etc.) use their built-in names, CNZ slots use their configured names, and user-created prompt slots use their display names.
+
+**Availability:** prompt-slot tokens only resolve at postMessage stage, after the generation completes. They produce no output during streaming or when fired without a committed message.
+
+### Syntax
+
+```
+{{psName:[nameFilter]:[mode]}}
+{{psContent:[nameFilter]:[mode]}}
+```
+
+Both arguments are optional. Leave either argument empty (or omit it entirely) to use the default.
+
+**`nameFilter`** — which slots to include. Same three forms as lorebook query filters:
+
+| Form | Selects |
+|---|---|
+| *(omit)* | All slots (wildcard) |
+| `[worldInfoBefore]` | Literal identifier or display name |
+| `[CNZ RAG]` | Literal display name — resolved via the current preset |
+| `[world*]` | Glob pattern on identifier or display name |
+| `myVar` | Turn variable — its value is used as the filter |
+
+**`mode`** — what to return when multiple slots match:
+
+| Mode | `{{psName}}` default | `{{psContent}}` default |
+|---|---|---|
+| `all` | Yes — all names, newline-separated | Joins all contents with a blank line |
+| `first` | Only the first match | Yes — only the first match |
+| `last` | Only the last match | Only the last match |
+
+The order of slots matches the PromptManager order — the same top-to-bottom sequence visible in the ST prompt editor.
+
+### Examples
+
+```
+{{psName}}                           — all slot names from the last generation, one per line
+{{psName::first}}                    — name of the first slot
+{{psName:[worldInfo*]}}              — names of all worldInfo* slots (e.g. worldInfoBefore, worldInfoAfter)
+{{psContent}}                        — content of the first slot (wildcard, first mode)
+{{psContent::all}}                   — full context stack, all slots joined with blank lines
+{{psContent:[cnz_rag]}}              — content of the CNZ RAG slot by identifier
+{{psContent:[CNZ RAG]}}              — same, by display name
+{{psContent:[worldInfoBefore]}}      — World Info Before content
+{{psContent:[worldInfo*]:all}}       — all worldInfo slot contents joined with blank lines
+{{psContent:mySlot}}                 — content of the slot whose name/identifier is stored in myVar 'mySlot'
+```
+
+### Use cases
+
+**Mirror main-call RAG in a side call.** If CNZ pulled in RAG content for the main reply, use `{{psContent:[cnz_rag]}}` in a call LLM prompt to give the side model the same retrieved context.
+
+**Audit context stack.** Compose a variable with `{{psName}}` to log which slots were active for a given generation — useful for debugging prompt construction.
+
+**Conditional on slot presence.** Combine with `{{if ... empty}}`: if `{{psContent:[cnz_rag]}}` is empty, a RAG slot was absent and a fallback branch can run instead.
+
+**Full stack replay.** `{{psContent::all}}` produces the entire context in PromptManager order — every slot concatenated with blank-line separators. This is useful for analytics or summarisation side calls that need the full prompt.
+
+---
+
 ## When things fire
 
 Triggeryze operates at two distinct stages of the generation lifecycle:
@@ -663,7 +799,7 @@ Triggeryze operates at two distinct stages of the generation lifecycle:
 | Stage | When | Actions available |
 |---|---|---|
 | **generationStart** | When a new AI turn begins, before any tokens | postMessage actions (compose variable, slash commands) |
-| **stream** | As each token arrives, before the message is committed | stop, stop + continue, slash commands |
+| **stream** | As each token arrives, before the message is committed | stop, slash commands |
 | **postMessage** | After the full message is saved | replace, call LLM, compose variable, generate image, slash commands, update |
 | **manual** | When a badge button or inline badge span is clicked | all postMessage actions |
 
@@ -763,10 +899,12 @@ The lorebook keyword trigger scans primary trigger keys. Selective logic keys, s
 When a call LLM action runs, SillyTavern's generation state is briefly active again. This is expected. Triggeryze guards against this triggering a dedup reset, so rules continue to behave correctly.
 
 **Event trigger (chat complete) and stream-stage actions**
-The event trigger's chat complete event only fires after the message is committed. Pairing it with stop or stop + continue has no effect — those actions require an active stream, which no longer exists at that point.
+The event trigger's chat complete event only fires after the message is committed. Pairing it with a stop action (with or without "and continue") has no effect — stop requires an active stream, which no longer exists at that point.
 
 **Variable match with no upstream rule**
 If a variable match trigger names a variable that was never set this turn, the trigger does not fire and a warning is written to the browser console. Check that the upstream rule is enabled, fires before the variable match rule in the list, and has its Save as field filled in with the matching name.
+
+Exception: the **is not set** operator intentionally fires when the variable is absent. No upstream rule is required — the trigger succeeds precisely because the variable does not exist.
 
 **Badge trigger and AND logic**
 A badge trigger (any style) combined with other triggers using AND prevents the rule from auto-firing. The badge trigger's test always returns false during automatic rule scanning — it only activates on click. Use OR logic if you want a rule that fires both automatically on a keyword match and manually on badge click.

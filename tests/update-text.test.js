@@ -9,6 +9,7 @@ vi.mock('../../../../../script.js', () => ({
     updateMessageBlock: vi.fn(),
     getRequestHeaders:  vi.fn(() => ({})),
 }));
+vi.mock('../../../../../scripts/openai.js', () => ({ oai_settings: { prompts: [] } }));
 
 // lorebookApi.js must be mocked so update.js can import it (lorebook path unused here)
 vi.mock('../lorebookApi.js', () => ({

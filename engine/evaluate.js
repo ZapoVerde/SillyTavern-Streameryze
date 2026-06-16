@@ -33,7 +33,7 @@ async function runTrigger(trigger, text) {
 export async function evaluateTriggers(rule, text) {
     if (!rule.triggers?.length) return null;
 
-    if (rule.triggerLogic === 'all') {
+    if (rule.when === 'all') {
         const results = await Promise.all(rule.triggers.map(t => runTrigger(t, text)));
         return results.every(r => r !== null) ? (results.find(r => r !== null) ?? null) : null;
     }

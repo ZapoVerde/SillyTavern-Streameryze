@@ -21,7 +21,7 @@ import { eventSource, event_types, name1, name2, addOneMessage, updateMessageBlo
 import { interpolate, resolveLbTokens } from './template.js';
 import { esc, extractParagraph, collectUniqueParagraphs } from './text.js';
 import { renderVarLegend } from './var-legend.js';
-import { clearWiCache } from '../triggers.js';
+import { clearWiCache } from '../triggers/lb-query.js';
 import { lbGetLorebook, lbSaveLorebook } from '../lorebookApi.js';
 
 /** Builds a complete ST worldinfo entry object for a new lorebook entry. */
@@ -86,10 +86,10 @@ export const update = {
             }, vars);
 
             const [rLorebook, rTitle, rKeys, rContent] = await Promise.all([
-                resolveLbTokens(config.lorebook ?? '', matchedKeyword, highlighted, vars),
-                resolveLbTokens(config.title    ?? '', matchedKeyword, highlighted, vars),
-                resolveLbTokens(config.keys     ?? '', matchedKeyword, highlighted, vars),
-                resolveLbTokens(config.content  ?? '', matchedKeyword, highlighted, vars),
+                resolveLbTokens(config.lorebook ?? '', matchedKeyword, highlighted, vars, messageId),
+                resolveLbTokens(config.title    ?? '', matchedKeyword, highlighted, vars, messageId),
+                resolveLbTokens(config.keys     ?? '', matchedKeyword, highlighted, vars, messageId),
+                resolveLbTokens(config.content  ?? '', matchedKeyword, highlighted, vars, messageId),
             ]);
 
             const lorebook = interp(rLorebook).trim();
@@ -142,7 +142,7 @@ export const update = {
         const upTo       = firstMatch ? msg.mes.slice(0, firstMatch.index) : '';
         const paragraph  = firstMatch ? extractParagraph(msg.mes, firstMatch.index).text : '';
 
-        const resolvedValue = await resolveLbTokens(config.value ?? '', matchedKeyword, highlighted, vars);
+        const resolvedValue = await resolveLbTokens(config.value ?? '', matchedKeyword, highlighted, vars, messageId);
         const value = interpolate(resolvedValue, {
             keyword:   matchedKeyword ?? '',
             message:   msg.mes,

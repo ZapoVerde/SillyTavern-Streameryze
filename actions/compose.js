@@ -34,7 +34,7 @@ export const compose = {
         const kwEsc          = (matchedKeyword ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const firstMatch     = kwEsc ? new RegExp(kwEsc, 'i').exec(text) : null;
         const upTo           = firstMatch ? text.slice(0, firstMatch.index) : '';
-        const resolvedTemplate = await resolveLbTokens(config.template ?? '', matchedKeyword, highlighted, vars);
+        const resolvedTemplate = await resolveLbTokens(config.template ?? '', matchedKeyword, highlighted, vars, messageId);
         const result = interpolate(resolvedTemplate, {
             keyword: matchedKeyword ?? '',
             message: text,

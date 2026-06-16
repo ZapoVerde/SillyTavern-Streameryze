@@ -24,7 +24,7 @@ vi.mock('../actions/index.js', () => ({
     interpolate:       vi.fn(t => t),
 }));
 
-vi.mock('../triggers.js', () => ({
+vi.mock('../triggers/turn-vars.js', () => ({
     setTurnVar:          vi.fn(),
     getTurnVar:          vi.fn(() => undefined),
     getTurnVarsSnapshot: vi.fn(() => ({})),
@@ -32,7 +32,7 @@ vi.mock('../triggers.js', () => ({
 
 import { executeActions, clearEarlyFired } from '../engine/execute.js';
 import { ACTION_REGISTRY }                 from '../actions/index.js';
-import { setTurnVar }                      from '../triggers.js';
+import { setTurnVar }                      from '../triggers/turn-vars.js';
 import { getVarDeps }                      from '../engine/evaluate.js';
 
 // ---------------------------------------------------------------------------

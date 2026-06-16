@@ -37,7 +37,7 @@ export const setStVar = {
         const kwEsc      = (matchedKeyword ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const firstMatch = kwEsc ? new RegExp(kwEsc, 'i').exec(text) : null;
         const upTo       = firstMatch ? text.slice(0, firstMatch.index) : '';
-        const resolved   = await resolveLbTokens(config.value ?? '', matchedKeyword, highlighted, vars);
+        const resolved   = await resolveLbTokens(config.value ?? '', matchedKeyword, highlighted, vars, messageId);
         const value      = interpolate(resolved, {
             keyword: matchedKeyword ?? '',
             message: text,

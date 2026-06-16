@@ -20,7 +20,8 @@ vi.mock('../../../shared.js', () => ({
 }));
 
 vi.mock('../actions/template.js', () => ({
-    interpolate: vi.fn((template) => template),
+    interpolate:            vi.fn((template) => template),
+    resolveHistoryTokens:   vi.fn((template) => template),
 }));
 
 vi.mock('../actions/text.js', () => ({
@@ -43,11 +44,10 @@ import { collectUniqueParagraphs }   from '../actions/text.js';
 // ---------------------------------------------------------------------------
 
 const ONCE_CONFIG = {
-    callMode:    'once',
-    outputMode:  'replaceKeyword',
-    prompt:      'Describe {{keyword}}',
-    profileId:   null,
-    historyTurns: 0,
+    callMode:   'once',
+    outputMode: 'replaceKeyword',
+    prompt:     'Describe {{keyword}}',
+    profileId:  null,
 };
 
 beforeEach(() => {

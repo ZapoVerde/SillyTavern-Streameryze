@@ -21,10 +21,22 @@ vi.mock('../lorebookApi.js', () => ({
     lbSaveLorebook: async (name, data) => { lbStore.set(name, data); },
 }));
 
-// triggers.js is at the project root and uses 4-up paths.
-// getSortedEntries dynamically projects the lbStore into the flat entry list
-// that getLbEntryByName expects, including a `world` field for lorebook scoping.
+// lb-query.js lives in triggers/ and uses 5-up paths. Mirror the factory at both
+// specifier depths so either path hits the lbStore-backed mock.
 vi.mock('../../../../scripts/world-info.js', () => ({
+    getSortedEntries: vi.fn(async () => {
+        const result = [];
+        for (const [lbName, lbData] of lbStore.entries()) {
+            for (const entry of Object.values(lbData.entries ?? {})) {
+                result.push({ ...entry, world: lbName });
+            }
+        }
+        return result;
+    }),
+    parseRegexFromString: vi.fn(() => null),
+    world_info_case_sensitive: false,
+}));
+vi.mock('../../../../../scripts/world-info.js', () => ({
     getSortedEntries: vi.fn(async () => {
         const result = [];
         for (const [lbName, lbData] of lbStore.entries()) {
@@ -58,9 +70,10 @@ vi.mock('../../../../../script.js', () => ({
     updateMessageBlock: vi.fn(),
     getRequestHeaders:  vi.fn(() => ({})),
 }));
+vi.mock('../../../../../scripts/openai.js', () => ({ oai_settings: { prompts: [] } }));
 
 import { update }                    from '../actions/update.js';
-import { getLbEntryByName, clearWiCache } from '../triggers.js';
+import { getLbEntryByName, clearWiCache } from '../triggers/lb-query.js';
 
 // ---------------------------------------------------------------------------
 // Helpers

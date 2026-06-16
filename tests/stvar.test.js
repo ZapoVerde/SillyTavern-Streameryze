@@ -32,7 +32,8 @@ vi.mock('../../../../../scripts/variables.js', () => ({
     },
 }));
 
-vi.mock('../../../../../script.js', () => ({ name1: 'User', name2: 'Char' }));
+vi.mock('../../../../../script.js',         () => ({ name1: 'User', name2: 'Char' }));
+vi.mock('../../../../../scripts/openai.js', () => ({ oai_settings: { prompts: [] } }));
 
 // triggers.js is at the project root — mock it so its world-info import is never attempted.
 vi.mock('../triggers.js', () => ({

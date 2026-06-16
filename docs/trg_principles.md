@@ -55,6 +55,8 @@ Within a single generation, a given rule fires at most once per stage (stream or
 
 The dedup key is `{ruleId}:{stage}`, not the matched keyword. This is deliberate: it allows a stop rule and a replace rule that share a trigger keyword to both fire in the same turn — stop at stream stage, replace at postMessage stage. A common idiom is "stop and strip" — halting the stream on a sentinel and then removing it from the saved message. Deduplication by keyword alone would silently break this.
 
+**The dedup ceiling is fixed at 1 and is not configurable.** The system is deliberately designed so that loop constructs are unnecessary rather than suppressed. Iteration needs are covered by three existing mechanisms: `calls: "per-match"` on `call-llm` for per-occurrence processing, the postMessage fixed-point loop for sequential variable chains where a downstream rule picks up on the next pass, and explicit rule repetition when a bounded number of steps is required. Adding a `max-fires` field or a loop action type would increase reasoning complexity for every author — making "will this rule fire infinitely?" a question that cannot be answered by inspection alone. If a workflow cannot be expressed through the above mechanisms, that is a design signal that the workflow itself needs rethinking, not that the engine needs loops.
+
 ---
 
 ## 5. Turn Variables Are the Only State Between Actions — and Between Rules
@@ -173,6 +175,18 @@ Every string field that a user may configure — labels, keywords, colors, promp
 Fields that genuinely cannot support interpolation (structural enum selects, internal identifiers) must explicitly document the exception. The default is interpolation: any string a user can type is a potential template.
 
 This principle means users can drive any string field from LLM output stored in a turn variable. A label field reading `{{options}}` and a split delimiter of `\n` produces one badge per line of LLM output with no additional configuration.
+
+---
+
+## 16. The Save Format Mirrors the UI
+
+A user who can read the settings panel should be able to read a saved ruleset file without a translator. Type keys in the format are kebab-case renderings of the labels shown in the UI — `call-llm` not `sideCall`, `keyword` not `keywordMatch`. The format is the public surface; internal registry keys are an implementation detail that never appears in files the user touches.
+
+The translation between format keys and registry keys lives entirely at the import/export boundary. Nothing else in the system knows about it. Code that leaks a registry key into the save format, or reads a format key directly from settings, has broken this boundary.
+
+This principle has a corollary: **import failures must be visible and named.** A rule that loads but silently does nothing is harder to diagnose than a rule that fails with a clear error. Unknown type keys, wrong enum values, and missing required fields each produce a specific warning naming the problem, the location, and the valid alternatives. Silent acceptance of broken input is a bug.
+
+The `note` field on rulesets, rules, triggers, and actions exists so that authors — including LLMs generating rulesets — can record intent alongside configuration. When a rule misfires, the note is the first thing to read: does the stated intent match what the config actually does? A system where the author's reasoning is preserved in the file is a system where debugging starts with reading, not guessing.
 
 ---
 
