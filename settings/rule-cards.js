@@ -350,11 +350,6 @@ function renderRulesetCard(ruleset, rsIdx, allRules, save) {
         (ruleset.rules ?? []).forEach((rule, ruleIdx) => {
             $body.append(renderRuleCard(rule, ruleIdx, ruleset.rules, allRules, save));
         });
-        $body.append(renderAddButton('+ rule', { _: null }, (type) => {
-            // renderAddButton is generic; for rules we bypass the registry picker
-        }));
-        // Replace with a simple button since rules don't use a type picker
-        $body.find('.trg-add-wrap').remove();
         const $addRule = $('<button class="trg-add-btn trg-rs-add-rule">+ rule</button>');
         $addRule.on('click', () => {
             ruleset.rules.push({ id: makeId(), enabled: true, when: 'any', triggers: [], actions: [] });
