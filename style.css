@@ -122,6 +122,9 @@
 /* Clobbering warning */
 .trg-clobber-warn    { margin-top:6px; padding:5px 8px; background:rgba(220,150,0,.1); border-left:3px solid rgba(220,150,0,.55); border-radius:3px; font-size:.8em; display:flex; flex-direction:column; gap:2px; }
 .trg-clobber-icon    { opacity:.75; }
+/* Ruleset card */
+.trg-ruleset-card   { margin-bottom:12px; }
+.trg-ruleset-header { display:flex; align-items:center; gap:5px; margin-bottom:4px; }
 /* Drag-and-drop */
 .trg-drag-handle           { cursor:grab; padding:0 4px 0 0; opacity:.2; flex-shrink:0; font-size:.9em; line-height:1; }
 .trg-drag-handle:hover     { opacity:.6; }
