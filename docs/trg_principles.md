@@ -163,3 +163,19 @@ Each non-trivial action or trigger implementation lives in its own file. A regis
 Shared machinery that serves multiple registry entries — template interpolation, LLM dispatch wiring, prefetch coordination — lives in named utility modules that declare their role in a preamble. It does not live in entry files (which would then export it sideways) or in the registry module (which would become an implementation file in disguise).
 
 300 lines remains a ceiling. If a single action file reaches it, the action is doing more than one thing — extract the secondary concern into a utility module. But a file can be wrong at 80 lines if it contains two entries. Size is a trailing indicator; the registry boundary is the primary constraint.
+
+---
+
+## 14. Tests Cover Logic, Not the UI
+
+The settings panel is scaffolding — it reads state into the DOM and writes DOM values back to state. It contains no logic (Principle 11). A test that validates DOM state is testing that the framework renders, not that Triggeryze is correct. There is nothing to unit-test in UI code, and adding tests there would only paper over a violation of Principle 11 if logic had migrated into the panel.
+
+What the test suite covers instead:
+
+**Unit tests** verify a single registry entry in isolation. A trigger test asserts that a given input returns a match or null. An action test asserts that a given config produces the correct side effect with no other entries involved. If a unit test requires stubbing multiple concerns, the entry under test is doing too much.
+
+**Round-trip tests** drive a constructed rule config through the full evaluation pipeline against a fixture input and assert the output: matched text, variable state, which actions fired. They verify that engine, registries, and variable store compose correctly without exposing implementation details of any individual part. Round-trip tests own the seams — unit tests own the entries.
+
+**End-to-end tests** run against a real (or minimal real) ST environment: ST is up, the extension is loaded, a chat produces a generation, and the test asserts observable results. E2E tests own the integration boundaries that round-trip tests cannot reach: ST event hooks, host message writes, and the actual dedup lifecycle across a turn.
+
+A gap at the unit or round-trip level is a design signal. If an entry is hard to test in isolation, it has undeclared dependencies. If a round-trip test requires excessive setup, the engine has hidden coupling.
