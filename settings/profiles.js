@@ -7,9 +7,9 @@
  * and the dirty-state asterisk. All handlers are wired in bindProfileHandlers; the caller
  * supplies an onRenderRules callback to avoid a circular dependency on rule-cards.js.
  *
- * Profiles store rulesets snapshots. Import/export currently uses an internal format;
- * the v2 public format (human-readable type keys, flat config, JSONC comments) is handled
- * by a dedicated import layer added in the format-v2 step.
+ * Import/export now uses the v2 boundary layer in format.js: JSONC comments are stripped,
+ * shapes are detected structurally, type keys and config field names are translated,
+ * and named warnings are emitted for unknown types or missing required fields.
  *
  * @api-declaration
  * isProfileDirty()                    — true when active rulesets differ from saved profile snapshot
@@ -26,6 +26,7 @@
 
 import { saveSettingsDebounced, callPopup } from '../../../../../script.js';
 import { getSettings, makeId }              from './storage.js';
+import { parseAndImport, exportProfile, exportRuleset } from './format.js';
 
 function downloadJson(filename, data) {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -35,6 +36,13 @@ function downloadJson(filename, data) {
     a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
+}
+
+function _showImportWarnings(warnings) {
+    if (!warnings.length) return;
+    const n = warnings.length;
+    toastr.warning(`${n} warning${n > 1 ? 's' : ''} on import — see console for details`, 'Triggeryze');
+    for (const w of warnings) console.warn('[triggeryze:import]', w);
 }
 
 export function isProfileDirty() {
@@ -122,7 +130,7 @@ export function bindProfileHandlers(onRenderRules) {
         const s    = getSettings();
         const name = s.currentProfileName;
         const safe = name.replace(/[^a-z0-9_-]/gi, '-').toLowerCase();
-        downloadJson(`triggeryze-${safe}.json`, { version: 2, type: 'profile', name, rulesets: structuredClone(s.rulesets) });
+        downloadJson(`triggeryze-${safe}.json`, exportProfile(name, s.rulesets));
     });
 
     $('#trg-profile-import').on('click', function () {
@@ -132,50 +140,46 @@ export function bindProfileHandlers(onRenderRules) {
             $input.remove();
             const file = this.files?.[0];
             if (!file) return;
-            let data;
-            try { data = JSON.parse(await file.text()); } catch {
-                toastr.error('Could not parse JSON file.', 'Triggeryze'); return;
+            const text = await file.text();
+            const { shape, name, rulesets, rule, warnings } = parseAndImport(text, makeId);
+
+            _showImportWarnings(warnings);
+
+            if (!shape) {
+                toastr.error(warnings[0] ?? 'Import failed.', 'Triggeryze');
+                return;
             }
-            if (!data || typeof data !== 'object') {
-                toastr.error('Not a valid Triggeryze export file.', 'Triggeryze'); return;
-            }
+
             const s = getSettings();
 
-            if (data.type === 'profile') {
-                const rulesets = data.rulesets ?? (data.rules ? [{ id: makeId(), name: 'Default', enabled: true, rules: data.rules }] : null);
-                if (!Array.isArray(rulesets)) { toastr.error('Profile has no rulesets.', 'Triggeryze'); return; }
-                let name = data.name ?? 'Imported';
-                if (s.profiles[name]) name = `${name} (imported)`;
-                if (s.profiles[name]) name = `${name} ${Date.now()}`;
-                s.profiles[name]     = { rulesets };
-                s.currentProfileName = name;
+            if (shape === 'profile') {
+                if (!rulesets?.length) { toastr.error('Profile has no rulesets.', 'Triggeryze'); return; }
+                let pname = name ?? 'Imported';
+                if (s.profiles[pname]) pname = `${pname} (imported)`;
+                if (s.profiles[pname]) pname = `${pname} ${Date.now()}`;
+                s.profiles[pname]    = { rulesets };
+                s.currentProfileName = pname;
                 s.rulesets           = structuredClone(rulesets);
                 saveSettingsDebounced();
                 refreshProfileDropdown();
                 onRenderRules();
-                toastr.success(`Profile "${name}" imported.`);
+                toastr.success(`Profile "${pname}" imported.`);
 
-            } else if (data.type === 'ruleset') {
-                if (!Array.isArray(data.rules)) { toastr.error('Invalid ruleset data.', 'Triggeryze'); return; }
-                const rs = { id: makeId(), name: data.name ?? 'Imported', enabled: true, rules: structuredClone(data.rules) };
+            } else if (shape === 'ruleset') {
+                const rs = rulesets?.[0];
+                if (!rs) { toastr.error('Invalid ruleset.', 'Triggeryze'); return; }
                 s.rulesets.push(rs);
                 saveSettingsDebounced();
                 onRenderRules();
-                toastr.success(`Ruleset "${rs.name}" imported.`);
+                toastr.success(`Ruleset "${rs.name || 'Untitled'}" imported.`);
 
-            } else if (data.type === 'rule') {
-                if (!data.rule || !Array.isArray(data.rule.triggers)) { toastr.error('Invalid rule data.', 'Triggeryze'); return; }
-                const rule  = structuredClone(data.rule);
-                rule.id     = makeId();
-                // Append to the last ruleset, or create a Default one if none exist
+            } else if (shape === 'rule') {
+                if (!rule) { toastr.error('Invalid rule.', 'Triggeryze'); return; }
                 if (!s.rulesets.length) s.rulesets.push({ id: makeId(), name: 'Default', enabled: true, rules: [] });
                 s.rulesets[s.rulesets.length - 1].rules.push(rule);
                 saveSettingsDebounced();
                 onRenderRules();
                 toastr.success(`Rule "${rule.name || 'Untitled'}" imported.`);
-
-            } else {
-                toastr.error(`Unknown export type: "${data.type ?? '(none)'}".`, 'Triggeryze');
             }
         });
         $input.trigger('click');

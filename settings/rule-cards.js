@@ -20,6 +20,7 @@
  */
 
 import { getSettings, makeId }                                             from './storage.js';
+import { exportRule, exportRuleset }                                       from './format.js';
 import { TRIGGER_REGISTRY }                                                from '../triggers.js';
 import { ACTION_REGISTRY, makeActionCtx }                                  from '../actions/index.js';
 import { reinjectRuleBadges }                                              from '../engine.js';
@@ -210,7 +211,7 @@ function renderRuleCard(rule, ruleIdx, rsRules, allRules, save) {
     $hdr.find('.trg-rule-name').on('input', function () { rule.name = this.value; save(); });
     $hdr.find('.trg-rule-export').on('click', () => {
         const label = (rule.name || `rule-${ruleIdx + 1}`).replace(/[^a-z0-9_-]/gi, '-').toLowerCase();
-        downloadJson(`triggeryze-${label}.json`, { version: 1, type: 'rule', rule: structuredClone(rule) });
+        downloadJson(`triggeryze-${label}.json`, exportRule(structuredClone(rule)));
     });
     $hdr.find('.trg-rule-dev').on('click', function () { rule.devMode = !rule.devMode; $(this).toggleClass('trg-dev-on'); save(); });
     $hdr.find('.trg-rule-clone').on('click', () => {
@@ -326,7 +327,7 @@ function renderRulesetCard(ruleset, rsIdx, allRules, save) {
     $hdr.find('.trg-rs-name').on('input', function () { ruleset.name = this.value; save(); });
     $hdr.find('.trg-rs-export').on('click', () => {
         const label = (ruleset.name || `group-${rsIdx + 1}`).replace(/[^a-z0-9_-]/gi, '-').toLowerCase();
-        downloadJson(`triggeryze-${label}.json`, { version: 2, type: 'ruleset', name: ruleset.name, rules: structuredClone(ruleset.rules) });
+        downloadJson(`triggeryze-${label}.json`, exportRuleset(structuredClone(ruleset)));
     });
     $hdr.find('.trg-rs-delete').on('click', () => {
         if (s.rulesets.length === 1) {
