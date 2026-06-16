@@ -33,7 +33,7 @@
  */
 
 import { getSettings, getEnabledRules }                                       from './settings/storage.js';
-import { clearWiCache, setChatComplete, clearTurnVars, setCurrentEvent, clearCurrentEvent } from './triggers.js';
+import { clearWiCache, clearTurnVars, setCurrentEvent, clearCurrentEvent } from './triggers.js';
 import { clearPrefetchCache, isDispatchActive }                              from './actions/index.js';
 import { ensureBadge, setBadge, renderRuleBadges, injectInlineBadges, reinjectAllInlineBadges, removeAllInlineBadges } from './badge.js';
 import { evaluateTriggers, ruleHasStage }                                     from './engine/evaluate.js';
@@ -127,7 +127,6 @@ export async function onGenerationStarted() {
     clearPrefetchCache();
     clearWiCache();
     clearTurnVars();
-    setChatComplete(false);
     const stCtx = window.SillyTavern?.getContext?.();
     const lastId = (stCtx?.chat?.length ?? 0) - 1;
     if (lastId >= 0) setBadge(lastId, 'unchanged');
@@ -191,7 +190,6 @@ export async function onMessageReceived(messageId) {
     const stCtx = window.SillyTavern?.getContext?.();
     const text  = stCtx?.chat?.[messageId]?.mes ?? '';
 
-    setChatComplete(true);
     setCurrentEvent('MESSAGE_RECEIVED');
     ensureBadge(messageId);
     renderRuleBadges(messageId, getRuleBadgeDefs(getEnabledRules(s)));

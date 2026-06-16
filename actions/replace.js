@@ -31,7 +31,7 @@ export const replace = {
         const msg = stCtx?.chat?.[messageId];
         if (!msg) return;
         const re                  = new RegExp(matchedKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-        const resolvedReplacement = await resolveLbTokens(config.replacement ?? '', matchedKeyword, highlighted, vars);
+        const resolvedReplacement = await resolveLbTokens(config.replacement ?? '', matchedKeyword, highlighted, vars, messageId);
         const replacement         = interpolate(resolvedReplacement, { keyword: matchedKeyword }, vars ?? {});
         const updated             = msg.mes.replace(re, replacement);
         if (updated === msg.mes) return;

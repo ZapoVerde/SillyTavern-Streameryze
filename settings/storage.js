@@ -102,10 +102,37 @@ function _migrateSettings(s) {
                 delete rule.triggerLogic;
                 migrated++;
             }
+            for (const trigger of (rule.triggers ?? [])) {
+                if (trigger.type === 'keywordMatch') {
+                    trigger.type   = 'keyword';
+                    trigger.config = { mode: 'text', ...(trigger.config ?? {}) };
+                    migrated++;
+                }
+                if (trigger.type === 'lbKeyword') {
+                    trigger.type   = 'keyword';
+                    trigger.config = { mode: 'lorebook' };
+                    migrated++;
+                }
+                if (trigger.type === 'regex') {
+                    trigger.type   = 'keyword';
+                    trigger.config = { mode: 'regex', ...(trigger.config ?? {}) };
+                    migrated++;
+                }
+                if (trigger.type === 'chatComplete') {
+                    trigger.type   = 'event';
+                    trigger.config = { event: 'MESSAGE_RECEIVED' };
+                    migrated++;
+                }
+            }
             for (const action of (rule.actions ?? [])) {
                 if (action.type === 'lbWrite') {
                     action.type   = 'update';
                     action.config = { target: 'lorebook', ...(action.config ?? {}) };
+                    migrated++;
+                }
+                if (action.type === 'stopContinue') {
+                    action.type   = 'stop';
+                    action.config = { andContinue: true };
                     migrated++;
                 }
             }
@@ -116,7 +143,7 @@ function _migrateSettings(s) {
         for (const rs of (profile.rulesets ?? [])) migrateRules(rs.rules);
     }
     if (migrated > 0) {
-        console.log(`[triggeryze] migrated ${migrated} lbWrite action(s) to update`);
+        console.log(`[triggeryze] migrated ${migrated} setting(s) to current format`);
         saveSettingsDebounced();
     }
 }

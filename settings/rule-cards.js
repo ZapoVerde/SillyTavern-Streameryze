@@ -39,6 +39,9 @@ const _expandedRulesets    = new Set();
 const _expandedRules       = new Set();
 const _expandedIngredients = new Set();
 
+// Active drag state — set in dragstart, cleared in dragend
+let _dragging = null; // { ruleId, rulesetId } | null
+
 function detectClobbers(rule) {
     const warnings = [];
     const postActions = (rule.actions ?? []).filter(a => {
@@ -94,8 +97,10 @@ function summarizeIngredient(item) {
         return kws.join(', ');
     }
     if (item.type === 'varMatch') {
-        const opSym = { equals: '=', notEquals: '≠', contains: '∋', set: 'set', notSet: 'unset' }[cfg.operator] ?? cfg.operator ?? '=';
-        return cfg.varName ? `${cfg.varName} ${opSym} ${cfg.value ?? ''}`.trim() : '';
+        const _noVal = ['notEmpty', 'set', 'notSet'];
+        const opSym  = { equals: '=', notEquals: '≠', contains: '∋', matches: '~', notEmpty: '≠ ""', set: 'set', notSet: '!set' }[cfg.operator] ?? cfg.operator ?? '=';
+        const val    = _noVal.includes(cfg.operator) ? '' : (cfg.value ?? '');
+        return cfg.varName ? `${cfg.varName} ${opSym}${val ? ' ' + val : ''}` : '';
     }
     if (item.type === 'sideCall') {
         const short = { replaceKeyword: 'replace kw', replaceParagraph: 'replace ¶', appendToMessage: 'append', insertMessage: 'insert', silent: 'silent' };
@@ -170,7 +175,7 @@ function renderAddButton(label, registry, onPick) {
     return $wrap;
 }
 
-function renderRuleCard(rule, ruleIdx, rsRules, allRules, save) {
+function renderRuleCard(rule, ruleIdx, rsRules, allRules, save, rulesetId) {
     const s       = getSettings();
     const rebuild = () => { save(); renderRules(save); };
 
@@ -197,6 +202,7 @@ function renderRuleCard(rule, ruleIdx, rsRules, allRules, save) {
 
     const $hdr = $(`
 <div class="trg-rule-header">
+    <span class="trg-drag-handle" title="Drag to reorder">⠿</span>
     <input type="checkbox" class="trg-rule-toggle" ${rule.enabled ? 'checked' : ''} title="Enable" />
     <input type="text" class="trg-rule-name" placeholder="Rule ${ruleIdx + 1}" />
     <span class="trg-rule-summary">${summary}</span>
@@ -228,6 +234,71 @@ function renderRuleCard(rule, ruleIdx, rsRules, allRules, save) {
         else _expandedRules.add(rule.id);
     });
     $card.append($hdr);
+
+    // ── Drag-and-drop ────────────────────────────────────────────────────────
+    // Only become draggable while the mouse is down on the handle
+    $card.on('mousedown', '.trg-drag-handle', () => $card.attr('draggable', 'true'));
+    $card.on('mouseup',   '.trg-drag-handle', () => $card.removeAttr('draggable'));
+
+    $card.on('dragstart', e => {
+        if (!$card.attr('draggable')) { e.preventDefault(); return; }
+        _dragging = { ruleId: rule.id, rulesetId };
+        e.originalEvent.dataTransfer.effectAllowed = 'move';
+        e.originalEvent.dataTransfer.setData('text/plain', JSON.stringify(_dragging));
+        setTimeout(() => $card.addClass('trg-drag-source'), 0);
+    });
+
+    $card.on('dragend', () => {
+        _dragging = null;
+        $card.removeAttr('draggable').removeClass('trg-drag-source trg-drag-above trg-drag-below');
+    });
+
+    $card.on('dragover', e => {
+        if (!_dragging) return;
+        e.preventDefault();
+        e.originalEvent.dataTransfer.dropEffect = 'move';
+        const rect   = $card[0].getBoundingClientRect();
+        const isAbove = e.originalEvent.clientY < rect.top + rect.height / 2;
+        $card.toggleClass('trg-drag-above', isAbove).toggleClass('trg-drag-below', !isAbove);
+    });
+
+    $card.on('dragleave', e => {
+        if (!$card[0].contains(e.originalEvent.relatedTarget)) {
+            $card.removeClass('trg-drag-above trg-drag-below');
+        }
+    });
+
+    $card.on('drop', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        $card.removeClass('trg-drag-above trg-drag-below');
+
+        const raw = e.originalEvent.dataTransfer.getData('text/plain');
+        if (!raw) return;
+        let src;
+        try { src = JSON.parse(raw); } catch { return; }
+        if (!src.ruleId) return;
+
+        const rect    = $card[0].getBoundingClientRect();
+        const isAbove = e.originalEvent.clientY < rect.top + rect.height / 2;
+
+        const s     = getSettings();
+        const srcRs = s.rulesets.find(rs => rs.id === src.rulesetId);
+        if (!srcRs) return;
+        const srcIdx = srcRs.rules.findIndex(r => r.id === src.ruleId);
+        if (srcIdx === -1) return;
+        const [moved] = srcRs.rules.splice(srcIdx, 1);
+
+        const dstRs = s.rulesets.find(rs => rs.id === rulesetId);
+        if (!dstRs) { srcRs.rules.splice(srcIdx, 0, moved); return; }
+
+        const dstIdx = dstRs.rules.findIndex(r => r.id === rule.id);
+        const insertAt = dstIdx === -1 ? dstRs.rules.length
+            : (isAbove ? dstIdx : dstIdx + 1);
+        // If same ruleset and moving downward, the splice above shifted indices
+        dstRs.rules.splice(insertAt, 0, moved);
+        rebuild();
+    });
 
     // ── Body ─────────────────────────────────────────────────────────────────
     const $body = $('<div class="trg-rule-body">');
@@ -348,7 +419,44 @@ function renderRulesetCard(ruleset, rsIdx, allRules, save) {
     if (isExpanded) {
         const $body = $('<div class="trg-ruleset-body">');
         (ruleset.rules ?? []).forEach((rule, ruleIdx) => {
-            $body.append(renderRuleCard(rule, ruleIdx, ruleset.rules, allRules, save));
+            $body.append(renderRuleCard(rule, ruleIdx, ruleset.rules, allRules, save, ruleset.id));
+        });
+
+        // Drop into empty space within this body (appends to end of ruleset)
+        $body.on('dragover', e => {
+            if (!_dragging || $(e.target).closest('.trg-rule-card').length) return;
+            e.preventDefault();
+            e.originalEvent.dataTransfer.dropEffect = 'move';
+            $body.addClass('trg-drag-target');
+        });
+        $body.on('dragleave', e => {
+            if (!$body[0].contains(e.originalEvent.relatedTarget)) {
+                $body.removeClass('trg-drag-target');
+            }
+        });
+        $body.on('drop', e => {
+            if ($(e.target).closest('.trg-rule-card').length) return; // card handler took it
+            e.preventDefault();
+            e.stopPropagation();
+            $body.removeClass('trg-drag-target');
+
+            const raw = e.originalEvent.dataTransfer.getData('text/plain');
+            if (!raw) return;
+            let src;
+            try { src = JSON.parse(raw); } catch { return; }
+            if (!src.ruleId) return;
+
+            const s     = getSettings();
+            const srcRs = s.rulesets.find(rs => rs.id === src.rulesetId);
+            if (!srcRs) return;
+            const srcIdx = srcRs.rules.findIndex(r => r.id === src.ruleId);
+            if (srcIdx === -1) return;
+            const [moved] = srcRs.rules.splice(srcIdx, 1);
+
+            const dstRs = s.rulesets.find(rs => rs.id === ruleset.id);
+            if (!dstRs) { srcRs.rules.splice(srcIdx, 0, moved); return; }
+            dstRs.rules.push(moved);
+            rebuild();
         });
         const $addRule = $('<button class="trg-add-btn trg-rs-add-rule">+ rule</button>');
         $addRule.on('click', () => {

@@ -124,10 +124,10 @@ describe('onGenerationStarted — event:GENERATION_STARTED routing', () => {
     });
 
     it('ignores rules without event:GENERATION_STARTED trigger', async () => {
-        const rule = makeRule('r1', 'chatComplete', {});
+        const rule = makeRule('r1', 'event', { event: 'MESSAGE_RECEIVED' });
         vi.mocked(getSettings).mockReturnValue({ rules: [rule], verbose: false, enabled: true });
         vi.mocked(ruleHasStage).mockReturnValue(true);
-        vi.mocked(evaluateTriggers).mockResolvedValue('chat complete');
+        vi.mocked(evaluateTriggers).mockResolvedValue('MESSAGE_RECEIVED');
 
         await onGenerationStarted();
 

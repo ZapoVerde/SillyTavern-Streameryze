@@ -41,7 +41,7 @@ export const sideCall = {
         const historyText = buildHistoryText(stCtx?.chat, messageId, config.historyTurns ?? 0);
         const kwEsc       = matchedKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const mkRe        = () => new RegExp(kwEsc, 'gi');
-        const resolvedPrompt = await resolveLbTokens(config.prompt ?? '', matchedKeyword, highlighted, vars);
+        const resolvedPrompt = await resolveLbTokens(config.prompt ?? '', matchedKeyword, highlighted, vars, messageId);
 
         const mkPrompt = (paragraph = '', upTo = '') => interpolate(resolvedPrompt, {
             keyword:   matchedKeyword ?? '',

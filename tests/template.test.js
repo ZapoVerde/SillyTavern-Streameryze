@@ -1,4 +1,11 @@
-import { vi, describe, it, expect, afterEach } from 'vitest';
+import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
+
+// Hoisted mock state for prompt-slot (ps) token tests.
+// vi.hoisted ensures these arrays exist before any vi.mock factory runs.
+const { MOCK_ITEMIZED_PROMPTS, MOCK_OAI_SETTINGS } = vi.hoisted(() => ({
+    MOCK_ITEMIZED_PROMPTS: [],
+    MOCK_OAI_SETTINGS:     { prompts: [] },
+}));
 
 // Mock triggers.js to prevent its world-info imports from loading.
 // Provide the three symbols that template.js actually uses.
@@ -17,8 +24,12 @@ vi.mock('../../../../../scripts/variables.js', () => ({
     getGlobalVariable: vi.fn(() => null),
 }));
 
-import { interpolate, getTemplateTier }          from '../actions/template.js';
-import { getLocalVariable, getGlobalVariable }   from '../../../../../scripts/variables.js';
+// Mock ST core files imported by template.js for prompt-slot resolution.
+vi.mock('../../../../../script.js',         () => ({ itemizedPrompts: MOCK_ITEMIZED_PROMPTS }));
+vi.mock('../../../../../scripts/openai.js', () => ({ oai_settings:    MOCK_OAI_SETTINGS     }));
+
+import { interpolate, getTemplateTier, resolveLbTokens } from '../actions/template.js';
+import { getLocalVariable, getGlobalVariable }           from '../../../../../scripts/variables.js';
 
 afterEach(() => { vi.clearAllMocks(); });
 
@@ -217,6 +228,225 @@ describe('interpolate — {{math:}} blocks', () => {
     it('runs after variable substitution in surrounding text', () => {
         // Math token itself contains only literals; the surrounding template can mix both.
         expect(interpolate('total: {{math: 2 + 3}} items', {})).toBe('total: 5 items');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// resolveLbTokens — {{psName}} / {{psContent}} prompt-slot tokens
+// ---------------------------------------------------------------------------
+
+// Fixtures — five-entry rawPrompt with a mix of system, CNZ, and chat slots.
+// chatHistory-0 intentionally has no def entry to exercise the identifier fallback.
+const PS_RAW_PROMPT = [
+    { role: 'system', content: 'You are an AI.',     identifier: 'main'           },
+    { role: 'system', content: 'World info before.', identifier: 'worldInfoBefore' },
+    { role: 'system', content: 'World info after.',  identifier: 'worldInfoAfter'  },
+    { role: 'system', content: 'RAG content here.',  identifier: 'cnz_rag'         },
+    { role: 'user',   content: 'Hello!',             identifier: 'chatHistory-0'   },
+];
+
+const PS_DEFS = [
+    { identifier: 'main',            name: 'Main Prompt'       },
+    { identifier: 'worldInfoBefore', name: 'World Info (Before)' },
+    { identifier: 'worldInfoAfter',  name: 'World Info (After)'  },
+    { identifier: 'cnz_rag',         name: 'CNZ RAG'            },
+    // no def for chatHistory-0 — identifier used as fallback name
+];
+
+const PS_MES_ID = 5;
+
+function setupPs(rawPrompt = PS_RAW_PROMPT, defs = PS_DEFS) {
+    MOCK_ITEMIZED_PROMPTS.length = 0;
+    MOCK_ITEMIZED_PROMPTS.push({ mesId: PS_MES_ID, rawPrompt });
+    MOCK_OAI_SETTINGS.prompts.length = 0;
+    MOCK_OAI_SETTINGS.prompts.push(...defs);
+}
+
+// ---------------------------------------------------------------------------
+// No-op cases
+// ---------------------------------------------------------------------------
+
+describe('resolveLbTokens — {{ps...}} no-op cases', () => {
+    it('returns template unchanged when no {{ps token is present', async () => {
+        setupPs();
+        expect(await resolveLbTokens('hello {{name}}', '', '', {}, PS_MES_ID)).toBe('hello {{name}}');
+    });
+
+    it('returns ps token unchanged when messageId is null', async () => {
+        setupPs();
+        expect(await resolveLbTokens('{{psContent}}', '', '', {}, null)).toBe('{{psContent}}');
+    });
+
+    it('returns ps token unchanged when messageId is undefined', async () => {
+        setupPs();
+        expect(await resolveLbTokens('{{psContent}}', '', '', {}, undefined)).toBe('{{psContent}}');
+    });
+
+    it('returns empty string when no itemizedPrompts entry matches messageId', async () => {
+        MOCK_ITEMIZED_PROMPTS.length = 0; // no entries
+        MOCK_OAI_SETTINGS.prompts.length = 0;
+        expect(await resolveLbTokens('{{psContent}}', '', '', {}, PS_MES_ID)).toBe('');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// {{psName}} — name retrieval
+// ---------------------------------------------------------------------------
+
+describe('{{psName}} — name retrieval', () => {
+    beforeEach(() => setupPs());
+
+    it('bare token returns all slot names newline-separated (default mode: all)', async () => {
+        const result = await resolveLbTokens('{{psName}}', '', '', {}, PS_MES_ID);
+        expect(result).toBe('Main Prompt\nWorld Info (Before)\nWorld Info (After)\nCNZ RAG\nchatHistory-0');
+    });
+
+    it('first mode returns only the first name', async () => {
+        expect(await resolveLbTokens('{{psName::first}}', '', '', {}, PS_MES_ID)).toBe('Main Prompt');
+    });
+
+    it('last mode returns only the last name', async () => {
+        expect(await resolveLbTokens('{{psName::last}}', '', '', {}, PS_MES_ID)).toBe('chatHistory-0');
+    });
+
+    it('filter by identifier literal returns the display name from defs', async () => {
+        expect(await resolveLbTokens('{{psName:[cnz_rag]}}', '', '', {}, PS_MES_ID)).toBe('CNZ RAG');
+    });
+
+    it('filter by display name literal also resolves via defs', async () => {
+        expect(await resolveLbTokens('{{psName:[CNZ RAG]}}', '', '', {}, PS_MES_ID)).toBe('CNZ RAG');
+    });
+
+    it('glob on identifier matches multiple entries', async () => {
+        const result = await resolveLbTokens('{{psName:[worldInfo*]}}', '', '', {}, PS_MES_ID);
+        expect(result).toBe('World Info (Before)\nWorld Info (After)');
+    });
+
+    it('unrecognised literal returns empty string', async () => {
+        expect(await resolveLbTokens('{{psName:[NoSuchSlot]}}', '', '', {}, PS_MES_ID)).toBe('');
+    });
+
+    it('falls back to identifier as name when no def exists for the entry', async () => {
+        expect(await resolveLbTokens('{{psName:[chatHistory-0]}}', '', '', {}, PS_MES_ID))
+            .toBe('chatHistory-0');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// {{psContent}} — content retrieval
+// ---------------------------------------------------------------------------
+
+describe('{{psContent}} — content retrieval', () => {
+    beforeEach(() => setupPs());
+
+    it('bare token returns the first slot content (default mode: first)', async () => {
+        expect(await resolveLbTokens('{{psContent}}', '', '', {}, PS_MES_ID)).toBe('You are an AI.');
+    });
+
+    it('explicit first mode matches implicit default', async () => {
+        expect(await resolveLbTokens('{{psContent::first}}', '', '', {}, PS_MES_ID)).toBe('You are an AI.');
+    });
+
+    it('last mode returns the final slot content', async () => {
+        expect(await resolveLbTokens('{{psContent::last}}', '', '', {}, PS_MES_ID)).toBe('Hello!');
+    });
+
+    it('all mode joins all slot contents with a blank line', async () => {
+        const result = await resolveLbTokens('{{psContent::all}}', '', '', {}, PS_MES_ID);
+        expect(result).toBe(
+            'You are an AI.\n\nWorld info before.\n\nWorld info after.\n\nRAG content here.\n\nHello!',
+        );
+    });
+
+    it('filter by identifier returns that slot\'s content', async () => {
+        expect(await resolveLbTokens('{{psContent:[cnz_rag]}}', '', '', {}, PS_MES_ID))
+            .toBe('RAG content here.');
+    });
+
+    it('filter by display name matches via oai_settings defs', async () => {
+        expect(await resolveLbTokens('{{psContent:[CNZ RAG]}}', '', '', {}, PS_MES_ID))
+            .toBe('RAG content here.');
+    });
+
+    it('filter by display name with explicit first mode', async () => {
+        expect(await resolveLbTokens('{{psContent:[Main Prompt]:first}}', '', '', {}, PS_MES_ID))
+            .toBe('You are an AI.');
+    });
+
+    it('glob filter with all mode joins multiple matching contents', async () => {
+        const result = await resolveLbTokens('{{psContent:[worldInfo*]:all}}', '', '', {}, PS_MES_ID);
+        expect(result).toBe('World info before.\n\nWorld info after.');
+    });
+
+    it('unmatched filter returns empty string', async () => {
+        expect(await resolveLbTokens('{{psContent:[NoSuchSlot]}}', '', '', {}, PS_MES_ID)).toBe('');
+    });
+
+    it('entries with empty content are excluded from results', async () => {
+        setupPs([
+            { role: 'system', content: '',      identifier: 'main'           },
+            { role: 'system', content: 'Real.', identifier: 'worldInfoBefore' },
+        ]);
+        expect(await resolveLbTokens('{{psContent}}', '', '', {}, PS_MES_ID)).toBe('Real.');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Variable substitution in filter args
+// ---------------------------------------------------------------------------
+
+describe('{{ps...}} — variable substitution in filter args', () => {
+    beforeEach(() => setupPs());
+
+    it('bare word in filter resolves to identifier from vars', async () => {
+        const result = await resolveLbTokens('{{psContent:mySlot}}', '', '', { mySlot: 'cnz_rag' }, PS_MES_ID);
+        expect(result).toBe('RAG content here.');
+    });
+
+    it('var resolving to a display name also matches via defs', async () => {
+        const result = await resolveLbTokens('{{psContent:mySlot}}', '', '', { mySlot: 'CNZ RAG' }, PS_MES_ID);
+        expect(result).toBe('RAG content here.');
+    });
+
+    it('unresolved var (not in snapshot) matches nothing', async () => {
+        expect(await resolveLbTokens('{{psContent:mySlot}}', '', '', {}, PS_MES_ID)).toBe('');
+    });
+
+    it('[bracket] literal is treated as a literal value, not a var name', async () => {
+        expect(await resolveLbTokens('{{psContent:[cnz_rag]}}', '', '', {}, PS_MES_ID))
+            .toBe('RAG content here.');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Multiple tokens in one template
+// ---------------------------------------------------------------------------
+
+describe('{{ps...}} — multiple tokens in one template', () => {
+    beforeEach(() => setupPs());
+
+    it('psName and psContent tokens resolve independently in the same template', async () => {
+        const result = await resolveLbTokens(
+            'Names: {{psName:[cnz_rag]}} | Content: {{psContent:[cnz_rag]}}',
+            '', '', {}, PS_MES_ID,
+        );
+        expect(result).toBe('Names: CNZ RAG | Content: RAG content here.');
+    });
+
+    it('surrounding text is preserved exactly', async () => {
+        const result = await resolveLbTokens(
+            'Preamble. {{psContent:[main]}} Postamble.',
+            '', '', {}, PS_MES_ID,
+        );
+        expect(result).toBe('Preamble. You are an AI. Postamble.');
+    });
+
+    it('unresolved token leaves empty string in place', async () => {
+        const result = await resolveLbTokens(
+            'before {{psContent:[Ghost]}} after',
+            '', '', {}, PS_MES_ID,
+        );
+        expect(result).toBe('before  after');
     });
 });
 

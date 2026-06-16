@@ -53,10 +53,31 @@ describe('detectShape', () => {
 // ---------------------------------------------------------------------------
 
 describe('importTrigger', () => {
-    it('translates keyword trigger', () => {
+    it('translates keyword trigger (text mode)', () => {
         const w = [];
         const t = importTrigger({ type: 'keyword', keywords: 'dragon', 'case-sensitive': true }, w, 'R1');
-        expect(t).toEqual({ type: 'keywordMatch', config: { keywords: 'dragon', caseSensitive: true } });
+        expect(t).toEqual({ type: 'keyword', config: { mode: 'text', keywords: 'dragon', caseSensitive: true } });
+        expect(w).toHaveLength(0);
+    });
+    it('migrates legacy chat-complete → event with MESSAGE_RECEIVED', () => {
+        const w = [];
+        const t = importTrigger({ type: 'chat-complete' }, w);
+        expect(t?.type).toBe('event');
+        expect(t?.config).toEqual({ event: 'MESSAGE_RECEIVED' });
+        expect(w).toHaveLength(0);
+    });
+    it('migrates legacy lb-keyword → keyword with mode lorebook', () => {
+        const w = [];
+        const t = importTrigger({ type: 'lb-keyword' }, w);
+        expect(t?.type).toBe('keyword');
+        expect(t?.config).toEqual({ mode: 'lorebook' });
+        expect(w).toHaveLength(0);
+    });
+    it('migrates legacy regex → keyword with mode regex', () => {
+        const w = [];
+        const t = importTrigger({ type: 'regex', pattern: '/dragon/i' }, w);
+        expect(t?.type).toBe('keyword');
+        expect(t?.config).toEqual({ mode: 'regex', pattern: '/dragon/i' });
         expect(w).toHaveLength(0);
     });
     it('translates var-match trigger with field and operator renames', () => {
@@ -65,17 +86,29 @@ describe('importTrigger', () => {
         expect(t?.config).toMatchObject({ varName: 'mood', operator: 'notEmpty' });
         expect(w).toHaveLength(0);
     });
+    it('translates var-match not-equals operator', () => {
+        const w = [];
+        const t = importTrigger({ type: 'var-match', var: 'hp', operator: 'not-equals', value: '0' }, w);
+        expect(t?.config).toMatchObject({ varName: 'hp', operator: 'notEquals', value: '0' });
+        expect(w).toHaveLength(0);
+    });
+    it('translates var-match not-set operator', () => {
+        const w = [];
+        const t = importTrigger({ type: 'var-match', var: 'flag', operator: 'not-set' }, w);
+        expect(t?.config).toMatchObject({ varName: 'flag', operator: 'notSet' });
+        expect(w).toHaveLength(0);
+    });
+    it('passes set operator through unchanged', () => {
+        const w = [];
+        const t = importTrigger({ type: 'var-match', var: 'flag', operator: 'set' }, w);
+        expect(t?.config).toMatchObject({ varName: 'flag', operator: 'set' });
+        expect(w).toHaveLength(0);
+    });
     it('translates probability → chance internal key', () => {
         const w = [];
         const t = importTrigger({ type: 'probability', chance: 30 }, w);
         expect(t?.type).toBe('chance');
         expect(t?.config.chance).toBe(30);
-    });
-    it('translates lb-keyword trigger', () => {
-        const w = [];
-        const t = importTrigger({ type: 'lb-keyword' }, w);
-        expect(t?.type).toBe('lbKeyword');
-        expect(t?.config).toEqual({});
     });
     it('translates event trigger', () => {
         const w = [];
@@ -155,10 +188,21 @@ describe('importAction', () => {
         expect(a).toBeNull();
         expect(w[0]).toContain('"vaporize"');
     });
-    it('stop and stop-continue have empty config', () => {
+    it('stop has andContinue:false by default', () => {
         const w = [];
-        expect(importAction({ type: 'stop' }, w)?.config).toEqual({});
-        expect(importAction({ type: 'stop-continue' }, w)?.config).toEqual({});
+        expect(importAction({ type: 'stop' }, w)?.config).toEqual({ andContinue: false });
+        expect(w).toHaveLength(0);
+    });
+    it('stop with continue:true sets andContinue', () => {
+        const w = [];
+        expect(importAction({ type: 'stop', continue: true }, w)?.config).toEqual({ andContinue: true });
+        expect(w).toHaveLength(0);
+    });
+    it('migrates legacy stop-continue to stop with andContinue:true', () => {
+        const w = [];
+        const a = importAction({ type: 'stop-continue' }, w);
+        expect(a?.type).toBe('stop');
+        expect(a?.config).toEqual({ andContinue: true });
         expect(w).toHaveLength(0);
     });
 });
@@ -175,7 +219,7 @@ describe('importRule', () => {
         expect(r?.name).toBe('R');
         expect(r?.when).toBe('any');
         expect(r?.enabled).toBe(true);
-        expect(r?.triggers[0].type).toBe('keywordMatch');
+        expect(r?.triggers[0].type).toBe('keyword');
         expect(r?.actions[0].type).toBe('stop');
         expect(w).toHaveLength(0);
     });
@@ -231,7 +275,7 @@ describe('parseAndImport', () => {
         const json = JSON.stringify({ name: 'R', triggers: [{ type: 'keyword', keywords: 'x' }], actions: [{ type: 'stop' }] });
         const { shape, rule } = parseAndImport(json, id);
         expect(shape).toBe('rule');
-        expect(rule?.triggers[0].type).toBe('keywordMatch');
+        expect(rule?.triggers[0].type).toBe('keyword');
     });
     it('imports a bare array as a nameless ruleset', () => {
         const json = JSON.stringify([{ triggers: [], actions: [] }]);
@@ -273,13 +317,21 @@ describe('parseAndImport', () => {
 // ---------------------------------------------------------------------------
 
 describe('exportTrigger', () => {
-    it('translates keywordMatch back to keyword with flat fields', () => {
-        const out = exportTrigger({ type: 'keywordMatch', config: { keywords: 'dragon', caseSensitive: false } });
+    it('exports keyword (text mode) with flat fields, no mode field', () => {
+        const out = exportTrigger({ type: 'keyword', config: { mode: 'text', keywords: 'dragon', caseSensitive: false } });
         expect(out).toEqual({ type: 'keyword', keywords: 'dragon' });
     });
     it('includes case-sensitive when true', () => {
-        const out = exportTrigger({ type: 'keywordMatch', config: { keywords: 'x', caseSensitive: true } });
+        const out = exportTrigger({ type: 'keyword', config: { mode: 'text', keywords: 'x', caseSensitive: true } });
         expect(out?.['case-sensitive']).toBe(true);
+    });
+    it('exports keyword (lorebook mode) with mode field', () => {
+        const out = exportTrigger({ type: 'keyword', config: { mode: 'lorebook' } });
+        expect(out).toEqual({ type: 'keyword', mode: 'lorebook' });
+    });
+    it('exports keyword (regex mode) with mode and pattern fields', () => {
+        const out = exportTrigger({ type: 'keyword', config: { mode: 'regex', pattern: '/dragon/i' } });
+        expect(out).toEqual({ type: 'keyword', mode: 'regex', pattern: '/dragon/i' });
     });
     it('translates chance back to probability', () => {
         const out = exportTrigger({ type: 'chance', config: { chance: 75 } });
@@ -291,7 +343,22 @@ describe('exportTrigger', () => {
         expect(out?.type).toBe('var-match');
         expect(out?.var).toBe('mood');
         expect(out?.operator).toBe('not-empty');
-        expect(out?.value).toBeUndefined();   // omitted when not-empty
+        expect(out?.value).toBeUndefined();
+    });
+    it('exports notEquals as not-equals and includes value', () => {
+        const out = exportTrigger({ type: 'varMatch', config: { varName: 'hp', operator: 'notEquals', value: '0' } });
+        expect(out?.operator).toBe('not-equals');
+        expect(out?.value).toBe('0');
+    });
+    it('exports notSet as not-set and omits value', () => {
+        const out = exportTrigger({ type: 'varMatch', config: { varName: 'flag', operator: 'notSet', value: '' } });
+        expect(out?.operator).toBe('not-set');
+        expect(out?.value).toBeUndefined();
+    });
+    it('exports set operator and omits value', () => {
+        const out = exportTrigger({ type: 'varMatch', config: { varName: 'flag', operator: 'set', value: '' } });
+        expect(out?.operator).toBe('set');
+        expect(out?.value).toBeUndefined();
     });
     it('translates badge with split-on and click', () => {
         const out = exportTrigger({ type: 'badge', config: { style: 'top', label: 'Go', color: '#f00', splitOn: ',', clickAction: 'inject' } });
@@ -303,7 +370,7 @@ describe('exportTrigger', () => {
         expect(out?.click).toBeUndefined();
     });
     it('preserves note', () => {
-        const out = exportTrigger({ type: 'keywordMatch', config: { keywords: 'x', caseSensitive: false }, note: 'why' });
+        const out = exportTrigger({ type: 'keyword', config: { mode: 'text', keywords: 'x', caseSensitive: false }, note: 'why' });
         expect(out?.note).toBe('why');
     });
     it('returns null for unknown internal type', () => {
@@ -344,6 +411,14 @@ describe('exportAction', () => {
         const out = exportAction({ type: 'update', config: { target: 'text', mode: 'replaceParagraph', value: 'x', outputVar: '', lorebook: '', title: '', keys: '', content: '' } });
         expect(out?.mode).toBe('replace-paragraph');
     });
+    it('exports stop with andContinue:true as { type: stop, continue: true }', () => {
+        const out = exportAction({ type: 'stop', config: { andContinue: true } });
+        expect(out).toEqual({ type: 'stop', continue: true });
+    });
+    it('exports stop with andContinue:false as { type: stop } with no continue field', () => {
+        const out = exportAction({ type: 'stop', config: { andContinue: false } });
+        expect(out).toEqual({ type: 'stop' });
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -370,7 +445,7 @@ describe('round-trip', () => {
         const json = JSON.stringify({
             name: 'G1',
             rules: [
-                { name: 'R1', triggers: [{ type: 'chat-complete' }], actions: [{ type: 'call-llm', prompt: 'go', var: 'out' }] },
+                { name: 'R1', triggers: [{ type: 'event', event: 'MESSAGE_RECEIVED' }], actions: [{ type: 'call-llm', prompt: 'go', var: 'out' }] },
             ],
         });
         const { rulesets } = parseAndImport(json, id);

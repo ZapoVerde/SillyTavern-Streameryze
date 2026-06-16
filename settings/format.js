@@ -70,10 +70,8 @@ export function stripJsonc(text) {
 // ---------------------------------------------------------------------------
 
 const TRIGGER_KEY_MAP = {
-    'keyword':        'keywordMatch',
-    'regex':          'regex',
-    'lb-keyword':     'lbKeyword',
-    'chat-complete':  'chatComplete',
+    'keyword':        'keyword',
+    // 'lb-keyword', 'regex', and 'chat-complete' are migrated in importTrigger
     'var-match':      'varMatch',
     'condition':      'condition',
     'badge':          'badge',
@@ -82,7 +80,6 @@ const TRIGGER_KEY_MAP = {
 };
 const ACTION_KEY_MAP = {
     'stop':           'stop',
-    'stop-continue':  'stopContinue',
     'replace':        'replace',
     'call-llm':       'sideCall',
     'compose':        'compose',
@@ -120,8 +117,8 @@ const _TEXT_MODE_I  = {
 };
 const _TEXT_MODE_E = _invert(_TEXT_MODE_I);
 
-const _OP_I = { 'not-empty': 'notEmpty' };   // partial — only the renamed value
-const _OP_E = { 'notEmpty':  'not-empty' };
+const _OP_I = { 'not-empty': 'notEmpty', 'not-equals': 'notEquals', 'not-set': 'notSet' };
+const _OP_E = { 'notEmpty': 'not-empty', 'notEquals': 'not-equals', 'notSet': 'not-set' };
 
 // ---------------------------------------------------------------------------
 // Per-type config importers: (flat format object) → internal config {}
@@ -129,10 +126,12 @@ const _OP_E = { 'notEmpty':  'not-empty' };
 // ---------------------------------------------------------------------------
 
 const TRIGGER_CFG_I = {
-    keywordMatch:  r => ({ keywords: r.keywords ?? '', caseSensitive: r['case-sensitive'] ?? false }),
-    regex:         r => ({ pattern:  r.pattern  ?? '' }),
-    lbKeyword:     ()  => ({}),
-    chatComplete:  ()  => ({}),
+    keyword:       r => {
+        const mode = r.mode ?? 'text';
+        if (mode === 'lorebook') return { mode };
+        if (mode === 'regex')    return { mode, pattern: r.pattern ?? '' };
+        return { mode: 'text', keywords: r.keywords ?? '', caseSensitive: r['case-sensitive'] ?? false };
+    },
     varMatch:      r => ({
         varName:  r.var ?? '',
         operator: _OP_I[r.operator] ?? r.operator ?? 'equals',
@@ -153,8 +152,7 @@ const TRIGGER_CFG_I = {
 };
 
 const ACTION_CFG_I = {
-    stop:          ()  => ({}),
-    stopContinue:  ()  => ({}),
+    stop:          r  => ({ andContinue: r.continue ?? false }),
     replace:       r => ({ replacement: r.replacement ?? '' }),
     sideCall:      r => ({
         prompt:       r.prompt       ?? '',
@@ -194,17 +192,20 @@ const ACTION_CFG_I = {
 // ---------------------------------------------------------------------------
 
 const TRIGGER_CFG_E = {
-    keywordMatch: cfg => {
+    keyword:      cfg => {
+        const mode = cfg.mode ?? 'text';
+        if (mode === 'lorebook') return { mode: 'lorebook' };
+        if (mode === 'regex')    return { mode: 'regex', pattern: cfg.pattern ?? '' };
+        // text mode: omit 'mode' field so old format readers aren't surprised
         const out = { keywords: cfg.keywords ?? '' };
         if (cfg.caseSensitive) out['case-sensitive'] = true;
         return out;
     },
-    regex:        cfg => ({ pattern: cfg.pattern ?? '' }),
-    lbKeyword:    ()  => ({}),
-    chatComplete: ()  => ({}),
     varMatch:     cfg => {
-        const out = { var: cfg.varName ?? '', operator: _OP_E[cfg.operator] ?? cfg.operator ?? 'equals' };
-        if ((cfg.operator ?? 'equals') !== 'notEmpty') out.value = cfg.value ?? '';
+        const _noVal = ['notEmpty', 'set', 'notSet'];
+        const op  = cfg.operator ?? 'equals';
+        const out = { var: cfg.varName ?? '', operator: _OP_E[op] ?? op };
+        if (!_noVal.includes(op)) out.value = cfg.value ?? '';
         return out;
     },
     condition:    cfg => ({ expression: cfg.expression ?? '' }),
@@ -228,8 +229,7 @@ const TRIGGER_CFG_E = {
 };
 
 const ACTION_CFG_E = {
-    stop:         ()  => ({}),
-    stopContinue: ()  => ({}),
+    stop:         cfg => cfg.andContinue ? { continue: true } : {},
     replace:      cfg => ({ replacement: cfg.replacement ?? '' }),
     sideCall:     cfg => {
         const out = { prompt: cfg.prompt ?? '' };
@@ -289,6 +289,22 @@ export function importTrigger(raw, warnings, ruleName = '') {
         warnings.push(`${_ruleLabel(ruleName)}: trigger is not an object — skipped`);
         return null;
     }
+    // Migrate legacy trigger types
+    if (raw.type === 'chat-complete') {
+        const trigger = { type: 'event', config: { event: 'MESSAGE_RECEIVED' } };
+        if (raw.note) trigger.note = raw.note;
+        return trigger;
+    }
+    if (raw.type === 'lb-keyword') {
+        const trigger = { type: 'keyword', config: { mode: 'lorebook' } };
+        if (raw.note) trigger.note = raw.note;
+        return trigger;
+    }
+    if (raw.type === 'regex') {
+        const trigger = { type: 'keyword', config: { mode: 'regex', pattern: raw.pattern ?? '' } };
+        if (raw.note) trigger.note = raw.note;
+        return trigger;
+    }
     const fmt  = raw.type;
     const ikey = TRIGGER_KEY_MAP[fmt];
     if (!ikey) {
@@ -305,6 +321,12 @@ export function importAction(raw, warnings, ruleName = '') {
     if (!raw || typeof raw !== 'object') {
         warnings.push(`${_ruleLabel(ruleName)}: action is not an object — skipped`);
         return null;
+    }
+    // Migrate legacy stop-continue format key → stop with andContinue
+    if (raw.type === 'stop-continue') {
+        const action = { type: 'stop', config: { andContinue: true } };
+        if (raw.note) action.note = raw.note;
+        return action;
     }
     const fmt  = raw.type;
     const ikey = ACTION_KEY_MAP[fmt];

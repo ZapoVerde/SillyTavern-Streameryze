@@ -167,7 +167,7 @@ All triggers accept an optional `note` field.
 Matches one or more words anywhere in the response. The matched text becomes `{{keyword}}`.
 
 ```
-keywords         string    comma-separated; supports * and ? wildcards; supports {{varName}} and lb query tokens
+keywords         string    required; comma-separated; supports * and ? wildcards; supports {{varName}} and lb query tokens
 case-sensitive   boolean   default false
 ```
 
@@ -176,7 +176,7 @@ case-sensitive   boolean   default false
 Matches a regular expression. The full match (or first capture group) becomes `{{keyword}}`.
 
 ```
-pattern   string   /pattern/flags syntax, or plain string for basic match
+pattern   string   required; /pattern/flags syntax, or plain string for basic match
 ```
 
 #### `lb-keyword`
@@ -192,9 +192,9 @@ No fields. Fires once after the full message is committed. Pair with postMessage
 Fires when a named turn variable matches a condition. The variable must have been set by an earlier rule this turn. The variable's value becomes `{{keyword}}`.
 
 ```
-var        string                                         variable name to test
-operator   "equals" | "contains" | "matches" | "not-empty"
-value      string                                         comparison value; omit when operator is "not-empty"
+var        string                                                                               required; variable name to test
+operator   "equals" | "not-equals" | "contains" | "matches" | "not-empty" | "set" | "not-set"   default "equals"
+value      string                                                                               comparison value; omit for "not-empty", "set", "not-set"
 ```
 
 #### `condition`
@@ -202,7 +202,7 @@ value      string                                         comparison value; omit
 Fires when a boolean expression over ST variables evaluates to true.
 
 ```
-expression   string   e.g. "chatvar::stats.hp < 20 AND chatvar::gold >= 100"
+expression   string   required; e.g. "chatvar::stats.hp < 20 AND chatvar::gold >= 100"
 ```
 
 Operators: `< > <= >= = != matches contains is empty in (…)`
@@ -230,6 +230,18 @@ Fires with the given probability each generation. Combine with `when: "all"` to 
 ```
 chance   number   0–100; default 50
 ```
+
+#### `event`
+
+Fires on a named lifecycle event. `{{keyword}}` is set to the event name.
+
+```
+event   "MESSAGE_RECEIVED" | "GENERATION_STARTED" | "CHARACTER_MESSAGE_RENDERED"   default "MESSAGE_RECEIVED"
+```
+
+- `MESSAGE_RECEIVED` — fires once after each AI message is fully received
+- `GENERATION_STARTED` — fires when a new AI turn begins, before any tokens arrive; use to clear variables or prepare state
+- `CHARACTER_MESSAGE_RENDERED` — fires each time a message is rendered to the DOM, including on chat reload for historical messages
 
 ---
 
@@ -262,7 +274,7 @@ replacement   string   replacement text; blank to delete the keyword; supports {
 **Stage: postMessage.** Fires an LLM request and routes the result into the message.
 
 ```
-prompt        string
+prompt        string                                                                        required; the LLM prompt; supports {{vars}}
 output        "replace-keyword" | "replace-paragraph" | "append" | "insert" | "silent"   default "replace-keyword"
 calls         "once" | "per-match"                                                         default "once"
 history       number                                                                        prior chat turns to include as {{history}}; default 0
@@ -283,7 +295,7 @@ Output modes:
 
 ```
 var        string   required; name of the turn variable to write
-template   string   supports {{vars}} and {{if condition}}…{{/if}} blocks
+template   string   required; supports {{vars}} and {{if condition}}…{{/if}} blocks
 ```
 
 #### `slash-cmd`
@@ -291,7 +303,7 @@ template   string   supports {{vars}} and {{if condition}}…{{/if}} blocks
 **Stage: stream and postMessage.** Executes an ST slash command string. Pair with a `chat-complete` trigger using `when: "all"` to restrict to postMessage only.
 
 ```
-command   string   ST slash command; supports {{vars}}
+command   string   required; ST slash command; supports {{vars}}
 var       string   save the pipe result of the last command to this turn variable
 ```
 
@@ -302,11 +314,12 @@ var       string   save the pipe result of the last command to this turn variabl
 **Lorebook target** (`target: "lorebook"`, the default):
 
 ```
-lorebook   string   lorebook name; must exist in ST's World Info panel; supports {{vars}}
-title      string   entry title; used to locate an existing entry; supports {{vars}}
-keys       string   comma-separated trigger keys; merged into existing keys on update; supports {{vars}}
-content    string   entry body; supports {{vars}}
-var        string   save the entry title to this turn variable on success
+target     "lorebook"   required; write this explicitly to avoid ambiguity
+lorebook   string       required; lorebook name; must exist in ST's World Info panel; supports {{vars}}
+title      string       required; entry title; used to locate an existing entry; supports {{vars}}
+keys       string       comma-separated trigger keys; merged into existing keys on update; supports {{vars}}
+content    string       entry body; supports {{vars}}
+var        string       save the entry title to this turn variable on success
 ```
 
 If the entry title exists, its content is replaced and new keys are merged in. If no entry is found, a new one is created. The lorebook file must already exist.
@@ -314,9 +327,10 @@ If the entry title exists, its content is replaced and new keys are merged in. I
 **Text target** (`target: "text"`):
 
 ```
-mode    "replace-keyword" | "replace-paragraph" | "append" | "insert"   default "replace-keyword"
-value   string                                                            supports {{vars}}
-var     string                                                            save the written text to this turn variable
+target   "text"                                                               required
+mode     "replace-keyword" | "replace-paragraph" | "append" | "insert"   default "replace-keyword"
+value    string                                                            required; supports {{vars}}
+var      string                                                            save the written text to this turn variable
 ```
 
 #### `image`
@@ -324,9 +338,9 @@ var     string                                                            save t
 **Stage: postMessage.** Generates an image and attaches it to the message. Returns immediately — image generation runs in the background.
 
 ```
-source      string    image backend; see valid values below
+source      string    default "pollinations"; image backend; see valid values below
 model       string    model name for the selected source; blank for source default
-prompt      string    image prompt; supports {{vars}}
+prompt      string    required; image prompt; supports {{vars}}
 history     number    prior chat turns to include as {{history}} in the prompt; default 0
 var         string    save the uploaded image path to this turn variable
 persist     boolean   save the image to the chat file; default true; false = shown this session only
@@ -341,9 +355,9 @@ Valid `source` values: `pollinations`, `fal`, `bfl`, `stability`, `openai`, `goo
 
 ```
 scope   "chat" | "global"   default "chat"; chat = scoped to this conversation, global = shared across all chats
-var     string               variable name
-key     string               optional — object key or array index (e.g. "hp", "0")
-value   string               supports {{vars}}
+var     string               required; variable name
+key     string               optional; object key or array index — always a string, even for numeric indices (e.g. "0", not 0)
+value   string               required; supports {{vars}}
 ```
 
 ---
@@ -364,12 +378,28 @@ Available in every string field that supports `{{vars}}`:
 {{varName}}                    value of a turn variable named varName
 {{getLBcontent keyword}}       lorebook entry body matching the trigger keyword
 {{getLBcontent [Entry Name]}}  lorebook entry body by literal title
-{{lbTitles:[lb]:[title]:[key]:[mode]}}   comma-separated entry titles from lorebook query
-{{lbKeys:[lb]:[title]:[key]:[mode]}}     comma-separated trigger keys from lorebook query
-{{lbContent:[lb]:[title]:[key]:[mode]}}  entry body from lorebook query
-{{lbBooks:[lb]:[title]:[key]:[mode]}}    lorebook names from lorebook query
+{{lbTitles:[lb]:[title]:[key]:[mode]:[scope]}}   comma-separated entry titles from lorebook query
+{{lbKeys:[lb]:[title]:[key]:[mode]:[scope]}}     comma-separated trigger keys from lorebook query
+{{lbContent:[lb]:[title]:[key]:[mode]:[scope]}}  entry body from lorebook query
+{{lbBooks:[lb]:[title]:[key]:[mode]:[scope]}}    lorebook names from lorebook query
+{{psName:[nameFilter]:[mode]}}      slot names from the last generation's context stack (current preset)
+{{psContent:[nameFilter]:[mode]}}   slot content from the last generation's context stack (current preset)
+```
+
+`lb` query arguments: all slots are optional (empty = wildcard). `mode`: `first | last | all` (default: `all` for titles/keys/books, `first` for content). `scope`:
+
+```
+active    (default, omit) — entries from the four active WI sources: global panel, character, chat, persona
+all       — every lorebook on disk; use for lorebooks intentionally kept out of ST's WI slots
+inactive  — only lorebooks on disk that are NOT in any active slot (complement of active)
+```
+
+`ps` token arguments: `nameFilter` is optional (empty = all slots). Filter forms: `[identifier]` literal identifier, `[Display Name]` literal display name (resolved via the current PromptManager preset), `glob*` pattern, or bare `varName` (turn variable). `mode`: `first | last | all` (default: `all` for `psName`, `first` for `psContent`). Resolves postMessage only — no output during streaming.
+
+```
 {{chatvar::varName}}           ST chat variable
 {{globalvar::varName}}         ST global variable
+{{math: expr}}                 evaluate a numeric expression after all variable substitution (e.g. {{math: {{hp}} + 10}})
 ```
 
 Conditional blocks (non-nestable):
@@ -409,3 +439,120 @@ Combinators: `AND`, `OR`, `!`, `( )`
 4. Omit `enabled` when true (default); write `"enabled": false` explicitly
 5. Omit optional fields that are empty, null, or equal to their default value
 6. Ruleset export produces a file with a top-level `rules` array — detected as a ruleset on re-import
+
+---
+
+## Examples
+
+Complete importable rulesets. Each block is valid JSONC — save as `.json` and import via the Import button in the profile bar.
+
+---
+
+### Sentinel stop and strip
+
+The canonical two-rule stop pattern. `stop` fires at **stream** stage; `replace` fires at **postMessage**. They cannot be collapsed into one rule — a single rule is bound to one stage.
+
+```jsonc
+{
+  "name": "Sentinel handling",
+  "note": "Stop the stream on [DONE] and remove it from the committed message. Two rules because stop and replace operate at different pipeline stages.",
+  "rules": [
+    {
+      "name": "Stop on [DONE]",
+      "triggers": [ { "type": "keyword", "keywords": "[DONE]" } ],
+      "actions": [ { "type": "stop" } ]
+    },
+    {
+      "name": "Strip [DONE]",
+      "note": "replace fires postMessage, after the full message is saved.",
+      "triggers": [ { "type": "keyword", "keywords": "[DONE]" } ],
+      "actions": [ { "type": "replace", "replacement": "" } ]
+    }
+  ]
+}
+```
+
+---
+
+### Anti-slop paragraph rewrite
+
+One rule, two sequential actions. The `compose` action writes a banned-phrase list to the `banned` turn variable; the `call-llm` action reads it via `{{banned}}`. Actions within a rule share a variable store and execute in listed order, so a later action can always read what an earlier one wrote.
+
+```jsonc
+{
+  "name": "Anti-slop",
+  "rules": [
+    {
+      "name": "Rewrite cliché",
+      "triggers": [
+        {
+          "type": "regex",
+          "pattern": "/\\b(breath\\s+catch\\w*|catch\\w*\\s+breath|anchoring|tether|ledger|claiming|stone\\s+dropped\\s+into\\s+water)\\b/i"
+        }
+      ],
+      "actions": [
+        {
+          "type": "compose",
+          "var": "banned",
+          "note": "Store the full list once so {{banned}} is available in the LLM prompt below.",
+          "template": "breath catch / catch breath\nanchoring\ntether\nledger\nclaiming\nstone dropped into water"
+        },
+        {
+          "type": "call-llm",
+          "output": "replace-paragraph",
+          "prompt": "The paragraph contains the prohibited phrase \"{{keyword}}\".\n\nFull banned list:\n{{banned}}\n\nRewrite this paragraph to remove the phrase entirely. Change the physical action or internal reaction — do not substitute a synonym or near-synonym. Output only the rewritten paragraph, nothing else.\n\n{{paragraph}}"
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+### Dynamic continuation badges
+
+A two-rule cross-stage flow. Rule 1 fires after each AI message, calls the LLM silently, and stores three short continuation options in `opts`. Rule 2 renders `opts` as clickable bottom badges — one per line — that inject and send the selected option.
+
+The badge rule carries no actions. `click: "inject-send"` on the trigger handles the interaction directly; the actions list is never reached.
+
+The `split-on` value `"\\n"` is the literal two-character string `\n` as entered in the UI. The badge renderer interprets it as a newline and splits the resolved label on it.
+
+```jsonc
+{
+  "name": "Continuation badges",
+  "note": "After each message, generate three short continuation options and render them as clickable send buttons below the response.",
+  "rules": [
+    {
+      "name": "Generate options",
+      "note": "MESSAGE_RECEIVED fires postMessage. output:silent runs the LLM but writes nothing to the message — the result goes to opts instead.",
+      "triggers": [
+        { "type": "event", "event": "MESSAGE_RECEIVED" }
+      ],
+      "actions": [
+        {
+          "type": "call-llm",
+          "output": "silent",
+          "var": "opts",
+          "history": 4,
+          "prompt": "Generate exactly three short continuation prompts from {{user}}'s perspective in an ongoing roleplay with {{char}}. Each must be under 12 words. Output only the three options, one per line, no numbering, no extra text.\n\n{{history}}"
+        }
+      ]
+    },
+    {
+      "name": "Show option badges",
+      "note": "split-on splits opts on newlines, producing one badge per option. click:inject-send submits the option when clicked.",
+      "triggers": [
+        {
+          "type": "badge",
+          "style": "bottom",
+          "label": "{{opts}}",
+          "split-on": "\\n",
+          "click": "inject-send"
+        }
+      ],
+      "actions": []
+    }
+  ]
+}
+```

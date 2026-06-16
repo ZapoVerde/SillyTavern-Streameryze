@@ -5,6 +5,7 @@ vi.mock('../../../../../script.js', () => ({
     event_types:        { MESSAGE_UPDATED: 'MESSAGE_UPDATED' },
     updateMessageBlock: vi.fn(),
 }));
+vi.mock('../../../../../scripts/openai.js', () => ({ oai_settings: { prompts: [] } }));
 
 vi.mock('../triggers.js', () => ({
     getLbEntryByName:     vi.fn(async () => null),

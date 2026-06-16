@@ -5,6 +5,9 @@
 .trg-rule-name       { background:transparent; border:none; border-bottom:1px solid transparent; font-weight:bold; font-size:.9em; opacity:.7; padding:0 2px; min-width:50px; max-width:160px; color:inherit; cursor:text; }
 .trg-rule-name:hover { border-bottom-color:rgba(255,255,255,.2); opacity:.9; }
 .trg-rule-name:focus { border-bottom-color:var(--SmartThemeBodyColor,#aaa); outline:none; background:rgba(255,255,255,.05); opacity:1; }
+.trg-rs-name         { background:transparent; border:none; border-bottom:1px solid transparent; font-weight:bold; font-size:.9em; opacity:.7; padding:0 2px; min-width:60px; flex:1; color:inherit; cursor:text; }
+.trg-rs-name:hover   { border-bottom-color:rgba(255,255,255,.2); opacity:.9; }
+.trg-rs-name:focus   { border-bottom-color:var(--SmartThemeBodyColor,#aaa); outline:none; background:rgba(255,255,255,.05); opacity:1; }
 .trg-rule-summary    { flex:1; font-size:.78em; opacity:.45; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-style:italic; }
 .trg-profile-sep     { width:1px; height:16px; background:rgba(255,255,255,.15); flex-shrink:0; margin:0 2px; align-self:center; }
 .trg-rule-collapse i { transition:transform .18s; display:inline-block; }
@@ -112,3 +115,10 @@
 /* Clobbering warning */
 .trg-clobber-warn    { margin-top:6px; padding:5px 8px; background:rgba(220,150,0,.1); border-left:3px solid rgba(220,150,0,.55); border-radius:3px; font-size:.8em; display:flex; flex-direction:column; gap:2px; }
 .trg-clobber-icon    { opacity:.75; }
+/* Drag-and-drop */
+.trg-drag-handle           { cursor:grab; padding:0 4px 0 0; opacity:.2; flex-shrink:0; font-size:.9em; line-height:1; }
+.trg-drag-handle:hover     { opacity:.6; }
+.trg-rule-card.trg-drag-source { opacity:.3; }
+.trg-rule-card.trg-drag-above  { border-top:2px solid rgba(140,160,255,.8) !important; }
+.trg-rule-card.trg-drag-below  { border-bottom:2px solid rgba(140,160,255,.8) !important; }
+.trg-ruleset-body.trg-drag-target { outline:1px dashed rgba(140,160,255,.45); outline-offset:3px; border-radius:4px; }

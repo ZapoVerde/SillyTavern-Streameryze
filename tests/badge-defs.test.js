@@ -151,7 +151,7 @@ describe('reinjectRuleBadges — badge defs routing', () => {
 
     it('rules without a badge trigger are excluded', () => {
         vi.mocked(getSettings).mockReturnValue({ rules: [
-            makeRule('r1', 'keywordMatch', { keywords: 'dragon' }),
+            makeRule('r1', 'keyword', { mode: 'text', keywords: 'dragon' }),
         ]});
         reinjectRuleBadges(0);
         expect(renderRuleBadges).toHaveBeenCalledWith(0, []);

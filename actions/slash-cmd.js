@@ -37,7 +37,7 @@ export const slashCmd = {
         const upTo       = firstMatch ? text.slice(0, firstMatch.index) : '';
         const paragraph  = firstMatch ? extractParagraph(text, firstMatch.index).text : '';
 
-        const resolvedCmd = await resolveLbTokens(config.command ?? '', matchedKeyword, highlighted, vars);
+        const resolvedCmd = await resolveLbTokens(config.command ?? '', matchedKeyword, highlighted, vars, messageId);
         const cmd = interpolate(resolvedCmd, {
             keyword:   matchedKeyword ?? '',
             message:   text,
@@ -61,7 +61,7 @@ export const slashCmd = {
     renderConfig($el, config, onChange, ctx) {
         $el.html(`
 <div class="trg-sc-wrap">
-    <small class="trg-hint trg-hint-warn">Fires at stream stage and after message — pair with a <em>chat complete</em> trigger (all) to restrict to after the message is received.</small>
+    <small class="trg-hint trg-hint-warn">Fires at stream stage and after message — pair with an <em>event: chat complete</em> trigger (all) to restrict to after the message is received.</small>
     <div class="trg-sc-row" style="margin-top:6px">
         <label class="trg-sc-lbl">save as</label>
         <input type="text" class="trg-cfg trg-slashcmd-outvar trg-outvar-field" placeholder="variable name (optional)" value="${esc(config.outputVar ?? '')}" style="flex:1" />

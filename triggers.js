@@ -1,6 +1,6 @@
 /**
  * @file st-extensions/SillyTavern-Triggeryze/triggers.js
- * @stamp {"utc":"2026-06-13T00:00:00.000Z"}
+ * @stamp {"utc":"2026-06-16T00:00:00.000Z"}
  * @architectural-role Registry — TRIGGER_REGISTRY assembler and built-in trigger implementations
  * @description
  * Trigger registry and built-in trigger implementations.
@@ -20,30 +20,24 @@
  *
  * @contract
  *   assertions:
- *     purity:          test() functions are read-only; no state mutations beyond _wiCache / _currentEvent
- *     state_ownership: [_wiCache, _currentEvent]
+ *     purity:          test() functions are read-only; no state mutations beyond _wiCache / _currentEvent / _turnVars
+ *     state_ownership: [_wiCache, _currentEvent, _turnVars]
  *     external_io:     getSortedEntries() (read-only lorebook access)
  */
 
-import { getSortedEntries, parseRegexFromString, world_info_case_sensitive } from '../../../../scripts/world-info.js';
+import { getSortedEntries, parseRegexFromString, world_info_case_sensitive, loadWorldInfo, world_names } from '../../../../scripts/world-info.js';
 import { getLocalVariable, getGlobalVariable }                               from '../../../../scripts/variables.js';
 import { parseVarRef, resolveStVar, evalCondition, makeLookup }              from './actions/condition.js';
 
 // Lorebook keyword cache. One build per generation, cleared on GENERATION_STARTED.
 let _wiCache     = null;
-let _entryCache  = null;  // full entry objects, cleared with _wiCache
-
-// Set to true once MESSAGE_RECEIVED fires (i.e. the message is fully committed).
-// Reset to false on GENERATION_STARTED. Read by the chatComplete trigger.
-let _chatComplete = false;
+let _entryCache  = null;  // active entries, cleared with _wiCache
+let _allEntryCache = null; // all-lorebooks entries (scope:'all'), cleared with _wiCache
 
 export function clearWiCache() {
-    _wiCache    = null;
-    _entryCache = null;
-}
-
-export function setChatComplete(value) {
-    _chatComplete = value;
+    _wiCache       = null;
+    _entryCache    = null;
+    _allEntryCache = null;
 }
 
 // Active ST event name during an event-trigger rule pass. Set by engine.js; read by the
@@ -63,17 +57,47 @@ export function getTurnVarsSnapshot()    { return Object.fromEntries(_turnVars);
 
 // ---------------------------------------------------------------------------
 // LB query system
-// Resolves {{lbTitles:...}}, {{lbKeys:...}}, {{lbContent:...}} tokens.
-// All three share the same 4-argument positional syntax:
-//   :[lb filter]:[title filter]:[key filter]:mode
-// Each filter is either [literal, list] or a variable name (bare).
-// Mode is: first | last | all  (default: all for titles/keys, first for content)
+// Resolves {{lbTitles:...}}, {{lbKeys:...}}, {{lbContent:...}}, {{lbBooks:...}} tokens.
+// Full positional syntax:
+//   :[lb filter]:[title filter]:[key filter]:[mode]:[scope]
+// Each filter is either [literal, list] or a variable name (bare). '' = wildcard.
+// mode  — first | last | all  (default: all for titles/keys/books, first for content)
+// scope — active | inactive | all  (default: active)
+//
+// SCOPE values:
+//   active   (default, omitted) — entries from ST's four active lorebook sources:
+//              1. Globally selected WI-panel lorebooks (selected_world_info)
+//              2. The current character's attached lorebook(s)
+//              3. The lorebook pinned to the current chat (chat_metadata)
+//              4. The current persona's lorebook
+//            This is ST-consistent: the same set WI would normally consult.
+//   all      — entries from every lorebook on disk (world_names), active or not.
+//              Use when you want a Triggeryze-only lorebook that isn't in any WI slot.
+//   inactive — entries from disk that are NOT in any active slot. Complement of active.
+//
+// The lbKeyword trigger always uses active scope (it has no slot for a scope argument).
 // ---------------------------------------------------------------------------
 
 async function getActiveEntries() {
     if (_entryCache) return _entryCache;
     _entryCache = (await getSortedEntries()).filter(e => !e.disable);
     return _entryCache;
+}
+
+async function _getAllEntries() {
+    if (_allEntryCache) return _allEntryCache;
+    const names = Array.isArray(world_names) ? world_names : [];
+    const buckets = await Promise.all(
+        names.map(async name => {
+            const data = await loadWorldInfo(name);
+            if (!data?.entries) return [];
+            return Object.values(data.entries)
+                .map(e => ({ ...e, world: name }))
+                .filter(e => !e.disable);
+        }),
+    );
+    _allEntryCache = buckets.flat();
+    return _allEntryCache;
 }
 
 // Parse a single argument slot: '' → null (wildcard), '[a,b]' → ['a','b'], 'name' → 'name'
@@ -107,12 +131,23 @@ function _filterMatches(items, str) {
     return items.some(p => _globTest(p, str));
 }
 
-async function _queryEntries(lbFilter, titleFilter, keyFilter, vars) {
+async function _queryEntries(lbFilter, titleFilter, keyFilter, vars, scope = 'active') {
     const lb    = _resolveArg(lbFilter, vars);
     const title = _resolveArg(titleFilter, vars);
     const key   = _resolveArg(keyFilter, vars);
-    const all   = await getActiveEntries();
-    return all.filter(e => {
+
+    let pool;
+    if (scope === 'all') {
+        pool = await _getAllEntries();
+    } else if (scope === 'inactive') {
+        const [all, active] = await Promise.all([_getAllEntries(), getActiveEntries()]);
+        const activeWorlds  = new Set(active.map(e => e.world).filter(Boolean));
+        pool = all.filter(e => e.world && !activeWorlds.has(e.world));
+    } else {
+        pool = await getActiveEntries();
+    }
+
+    return pool.filter(e => {
         if (!_filterMatches(lb,    e.world   ?? '')) return false;
         if (!_filterMatches(title, e.comment ?? '')) return false;
         if (key !== null) {
@@ -124,9 +159,13 @@ async function _queryEntries(lbFilter, titleFilter, keyFilter, vars) {
 }
 
 /**
- * Pre-resolves {{lbTitles:...}}, {{lbKeys:...}}, {{lbContent:...}} tokens in a string.
+ * Pre-resolves {{lbTitles:...}}, {{lbKeys:...}}, {{lbContent:...}}, {{lbBooks:...}} tokens.
  * Must run before interpolate() — interpolate's {{...}} regex would otherwise blank them.
  * vars should be the current turn-var snapshot (getTurnVarsSnapshot()).
+ *
+ * Syntax: {{lbKeys:[lb]:[title]:[key]:[mode]:[scope]}}
+ * scope defaults to 'active'. Pass 'all' or 'inactive' to reach off-WI lorebooks.
+ * See the LB query system comment block above for full scope semantics.
  */
 export async function resolveLbQueryTokens(template, vars = {}) {
     if (!template) return template;
@@ -144,8 +183,9 @@ export async function resolveLbQueryTokens(template, vars = {}) {
         const titleArg = _parseArg(parts[1]);
         const keyArg   = _parseArg(parts[2]);
         const mode     = (parts[3] ?? '').trim() || null;
+        const scope    = (parts[4] ?? '').trim() || 'active';
 
-        const entries = await _queryEntries(lbArg, titleArg, keyArg, vars);
+        const entries = await _queryEntries(lbArg, titleArg, keyArg, vars, scope);
         let replacement = '';
 
         if (type === 'lbTitles') {
@@ -336,10 +376,27 @@ async function updateKwPreview($el, keywords, cs) {
  */
 export const TRIGGER_REGISTRY = {
 
-    keywordMatch: {
-        label: 'keyword match',
-        defaultConfig: { keywords: '', caseSensitive: false },
+    keyword: {
+        label: 'keyword',
+        defaultConfig: { mode: 'text', keywords: '', caseSensitive: false },
         async test(text, config) {
+            const mode = config.mode ?? 'text';
+            if (mode === 'lorebook') {
+                const kws = await getWiKeywords();
+                for (const kw of kws) {
+                    if (matchWiKw(text, kw)) return kw.raw;
+                }
+                return null;
+            }
+            if (mode === 'regex') {
+                if (!config.pattern) return null;
+                try {
+                    const re = parseRegexFromString(config.pattern) ?? new RegExp(config.pattern);
+                    const m  = re.exec(text);
+                    return m ? m[0] : null;
+                } catch { return null; }
+            }
+            // text mode (default)
             const cs       = config.caseSensitive ?? false;
             const snapshot = getTurnVarsSnapshot();
             const resolved = _expandKwVars(await resolveLbQueryTokens(config.keywords ?? '', snapshot), snapshot);
@@ -358,89 +415,74 @@ export const TRIGGER_REGISTRY = {
             return null;
         },
         renderConfig($el, config, onChange) {
+            const mode = config.mode ?? 'text';
             $el.html(`
-<input type="text" class="text_pole trg-cfg" placeholder="word1, sam*, el?ra, ..." value="${esc(config.keywords)}" />
-<small class="trg-hint">Comma-separated — multiple keywords trigger on any match</small>
-<div class="trg-kw-preview" style="display:none;"></div>
-<div class="trg-kw-footer">
-    <label class="trg-check-row">
-        <input type="checkbox" ${config.caseSensitive ? 'checked' : ''} />
-        case sensitive
-    </label>
-    <span class="trg-help-toggle" title="How this works">?</span>
+<div style="margin-bottom:6px">
+    <select class="trg-kw-mode" style="font-size:.85em">
+        <option value="text"     ${mode==='text'     ?'selected':''}>text</option>
+        <option value="lorebook" ${mode==='lorebook' ?'selected':''}>lorebook</option>
+        <option value="regex"    ${mode==='regex'    ?'selected':''}>regex</option>
+    </select>
 </div>
-<div class="trg-help-text" style="display:none;">
-    Separate keywords with commas. Matches anywhere in the text.<br>
-    <b>*</b> — any characters &nbsp;&nbsp; <b>?</b> — exactly one character<br>
-    <span class="trg-help-eg">sam*</span> → samuel, samurai &nbsp;
-    <span class="trg-help-eg">el?ra</span> → elara, elora<br>
-    Case sensitive applies to plain text and wildcards. Use the <i>regex</i> trigger for full patterns.
+<div class="trg-kw-text-ui"${mode!=='text'     ?' style="display:none"':''}>
+    <input type="text" class="text_pole trg-cfg trg-kw-input" placeholder="word1, sam*, el?ra, ..." value="${esc(config.keywords ?? '')}" />
+    <small class="trg-hint">Comma-separated — multiple keywords trigger on any match</small>
+    <div class="trg-kw-preview" style="display:none;"></div>
+    <div class="trg-kw-footer">
+        <label class="trg-check-row">
+            <input type="checkbox" class="trg-kw-cs" ${config.caseSensitive ? 'checked' : ''} />
+            case sensitive
+        </label>
+        <span class="trg-help-toggle" title="How this works">?</span>
+    </div>
+    <div class="trg-help-text" style="display:none;">
+        Separate keywords with commas. Matches anywhere in the text.<br>
+        <b>*</b> — any characters &nbsp;&nbsp; <b>?</b> — exactly one character<br>
+        <span class="trg-help-eg">sam*</span> → samuel, samurai &nbsp;
+        <span class="trg-help-eg">el?ra</span> → elara, elora<br>
+        Case sensitive applies to plain text and wildcards. Use <i>regex</i> mode for full patterns.
+    </div>
+</div>
+<div class="trg-kw-lb-ui"${mode!=='lorebook' ?' style="display:none"':''}>
+    <small class="trg-hint">Fires on any primary key from the active lorebooks (globally selected, character-attached, chat-pinned, and persona). Lorebooks not in one of these four slots are not visible here.</small>
+</div>
+<div class="trg-kw-re-ui"${mode!=='regex'     ?' style="display:none"':''}>
+    <input type="text" class="text_pole trg-cfg trg-kw-pattern" placeholder="/pattern/flags or plaintext" value="${esc(config.pattern ?? '')}" />
 </div>`);
 
-            // Run preview immediately on render so existing config is described
-            updateKwPreview($el, config.keywords ?? '', config.caseSensitive ?? false);
+            if (mode === 'text') updateKwPreview($el, config.keywords ?? '', config.caseSensitive ?? false);
 
             const read = () => ({
-                keywords:      $el.find('input[type="text"]').val(),
-                caseSensitive: $el.find('input[type="checkbox"]').prop('checked'),
+                ...config,
+                mode:          $el.find('.trg-kw-mode').val(),
+                keywords:      $el.find('.trg-kw-input').val(),
+                caseSensitive: $el.find('.trg-kw-cs').prop('checked'),
+                pattern:       $el.find('.trg-kw-pattern').val(),
             });
-            $el.find('input[type="text"]').on('input', function () {
+
+            $el.find('.trg-kw-mode').on('change', function () {
+                const newMode = this.value;
+                $el.find('.trg-kw-text-ui').toggle(newMode === 'text');
+                $el.find('.trg-kw-lb-ui').toggle(newMode === 'lorebook');
+                $el.find('.trg-kw-re-ui').toggle(newMode === 'regex');
+                if (newMode === 'text') updateKwPreview($el, $el.find('.trg-kw-input').val(), $el.find('.trg-kw-cs').prop('checked'));
+                onChange(read());
+            });
+            $el.find('.trg-kw-input').on('input', function () {
                 const cur = read();
                 updateKwPreview($el, cur.keywords, cur.caseSensitive);
                 onChange(cur);
             });
-            $el.find('input[type="checkbox"]').on('change', function () {
+            $el.find('.trg-kw-cs').on('change', function () {
                 const cur = read();
                 updateKwPreview($el, cur.keywords, cur.caseSensitive);
                 onChange(cur);
             });
+            $el.find('.trg-kw-pattern').on('input', function () { onChange(read()); });
             $el.find('.trg-help-toggle').on('click', function () {
                 $el.find('.trg-help-text').slideToggle(150);
                 $(this).toggleClass('trg-help-open');
             });
-        },
-    },
-
-    lbKeyword: {
-        label: 'lorebook keyword',
-        defaultConfig: {},
-        async test(text) {
-            const kws = await getWiKeywords();
-            for (const kw of kws) {
-                if (matchWiKw(text, kw)) return kw.raw;
-            }
-            return null;
-        },
-        renderConfig($el) {
-            $el.html('<small class="trg-hint">Fires on any primary key from the active lorebooks.</small>');
-        },
-    },
-
-    regex: {
-        label: 'regex',
-        defaultConfig: { pattern: '' },
-        async test(text, config) {
-            if (!config.pattern) return null;
-            try {
-                const re = parseRegexFromString(config.pattern) ?? new RegExp(config.pattern);
-                const m = re.exec(text);
-                return m ? m[0] : null;
-            } catch { return null; }
-        },
-        renderConfig($el, config, onChange) {
-            $el.html(`<input type="text" class="text_pole trg-cfg" placeholder="/pattern/flags or plaintext" value="${esc(config.pattern)}" />`);
-            $el.find('input').on('input', function () { onChange({ ...config, pattern: this.value }); });
-        },
-    },
-
-    chatComplete: {
-        label: 'chat complete',
-        defaultConfig: {},
-        async test() {
-            return _chatComplete ? 'chat complete' : null;
-        },
-        renderConfig($el) {
-            $el.html('<small class="trg-hint">Fires once after each fully received message. Pair with postMessage actions (call LLM, replace, generate image).</small>');
         },
     },
 
@@ -640,33 +682,43 @@ export const TRIGGER_REGISTRY = {
         async test(_text, config) {
             const name = (config.varName ?? '').trim();
             if (!name) return null;
+            const op = config.operator ?? 'equals';
+
+            // set/notSet operate on variable existence, not value
+            if (op === 'set')    return _turnVars.has(name) ? (String(_turnVars.get(name) ?? '') || 'set') : null;
+            if (op === 'notSet') return _turnVars.has(name) ? null : 'unset';
+
             if (!_turnVars.has(name)) {
                 console.warn(`[triggeryze] varMatch: "${name}" not set this turn`);
                 return null;
             }
             const actual = String(_turnVars.get(name) ?? '');
-            const op     = config.operator ?? 'equals';
             const target = config.value ?? '';
-            let hits = false;
-            if (op === 'equals')   hits = actual === target;
-            if (op === 'contains') hits = actual.toLowerCase().includes(target.toLowerCase());
-            if (op === 'matches')  { try { hits = new RegExp(target, 'i').test(actual); } catch { hits = false; } }
-            if (op === 'notEmpty') hits = actual.trim() !== '';
-            return hits ? actual : null;
+            if (op === 'equals')    return actual === target ? actual : null;
+            if (op === 'notEquals') return actual !== target ? actual : null;
+            if (op === 'contains')  return actual.toLowerCase().includes(target.toLowerCase()) ? actual : null;
+            if (op === 'matches')   { try { return new RegExp(target, 'i').test(actual) ? actual : null; } catch { return null; } }
+            if (op === 'notEmpty')  return actual.trim() !== '' ? actual : null;
+            return null;
         },
         renderConfig($el, config, onChange) {
+            const _noValue = ['notEmpty', 'set', 'notSet'];
+            const op = config.operator ?? 'equals';
             $el.html(`
 <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
     <input type="text" class="text_pole trg-cfg trg-vm-name" placeholder="variable name" value="${esc(config.varName ?? '')}" style="flex:1;min-width:80px" />
     <select class="trg-cfg trg-vm-op" style="flex:0 0 auto">
-        <option value="equals"   ${config.operator === 'equals'   ? 'selected' : ''}>equals</option>
-        <option value="contains" ${config.operator === 'contains' ? 'selected' : ''}>contains</option>
-        <option value="matches"  ${config.operator === 'matches'  ? 'selected' : ''}>matches regex</option>
-        <option value="notEmpty" ${config.operator === 'notEmpty' ? 'selected' : ''}>not empty</option>
+        <option value="equals"    ${op === 'equals'    ? 'selected' : ''}>equals</option>
+        <option value="notEquals" ${op === 'notEquals' ? 'selected' : ''}>not equals</option>
+        <option value="contains"  ${op === 'contains'  ? 'selected' : ''}>contains</option>
+        <option value="matches"   ${op === 'matches'   ? 'selected' : ''}>matches regex</option>
+        <option value="notEmpty"  ${op === 'notEmpty'  ? 'selected' : ''}>not empty</option>
+        <option value="set"       ${op === 'set'       ? 'selected' : ''}>is set</option>
+        <option value="notSet"    ${op === 'notSet'    ? 'selected' : ''}>is not set</option>
     </select>
     <input type="text" class="text_pole trg-cfg trg-vm-value" placeholder="value"
         value="${esc(config.value ?? '')}"
-        style="flex:1;min-width:80px;${config.operator === 'notEmpty' ? 'display:none' : ''}" />
+        style="flex:1;min-width:80px;${_noValue.includes(op) ? 'display:none' : ''}" />
 </div>
 <div class="trg-var-preview" style="display:none;margin-top:3px;font-size:.82em;opacity:.8;"></div>`);
 
@@ -686,7 +738,7 @@ export const TRIGGER_REGISTRY = {
                 updateVarPreview($el, this.value.trim());
             });
             $op.on('change', function () {
-                $value.toggle(this.value !== 'notEmpty');
+                $value.toggle(!_noValue.includes(this.value));
                 onChange(read());
             });
             $value.on('input', () => onChange(read()));

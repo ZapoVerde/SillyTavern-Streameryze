@@ -58,6 +58,7 @@ vi.mock('../../../../../script.js', () => ({
     updateMessageBlock: vi.fn(),
     getRequestHeaders:  vi.fn(() => ({})),
 }));
+vi.mock('../../../../../scripts/openai.js', () => ({ oai_settings: { prompts: [] } }));
 
 import { update }                    from '../actions/update.js';
 import { getLbEntryByName, clearWiCache } from '../triggers.js';

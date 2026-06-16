@@ -1,19 +1,18 @@
 /**
  * @file st-extensions/SillyTavern-Triggeryze/actions/stop.js
- * @stamp {"utc":"2026-06-15T00:00:00.000Z"}
- * @architectural-role Registry — stop and stop+continue stream actions
+ * @stamp {"utc":"2026-06-16T00:00:00.000Z"}
+ * @architectural-role Registry — stop stream action
  * @description
- * Two stream-stage actions that halt generation. stop halts and does nothing else.
- * stopContinue halts then re-triggers generation after a short delay, allowing
- * any newly activated lorebook entries to participate in the resumed reply.
+ * Stream-stage action that halts generation. When andContinue is enabled,
+ * resumes generation after stopping so that any newly activated lorebook
+ * entries participate in the continued reply.
  *
  * @api-declaration
- * stop        — action definition object for the ACTION_REGISTRY
- * stopContinue — action definition object for the ACTION_REGISTRY
+ * stop — action definition object for the ACTION_REGISTRY
  *
  * @contract
  *   assertions:
- *     purity:          none — both actions call stCtx.stopGeneration() and/or window.SillyTavern
+ *     purity:          none — calls stCtx.stopGeneration() and/or window.SillyTavern
  *     state_ownership: none
  *     external_io:     stCtx.stopGeneration(), eventSource, window.SillyTavern
  */
@@ -24,29 +23,27 @@ export const stop = {
     label: 'stop',
     stage: 'stream',
     templateFields: () => [],
-    defaultConfig: {},
+    defaultConfig: { andContinue: false },
     async execute(config, { stCtx }) {
         stCtx?.stopGeneration?.();
+        if (config.andContinue) {
+            // GENERATION_STOPPED fires synchronously inside stopGeneration().
+            // The 500ms delay lets the async stream teardown finish before resuming.
+            eventSource.once(event_types.GENERATION_STOPPED, () => {
+                setTimeout(() => window.SillyTavern?.getContext?.()?.generate?.('continue'), 500);
+            });
+        }
     },
-    renderConfig($el) {
-        $el.html('<small class="trg-hint">Halts generation. The matched text stays in the partial message.</small>');
-    },
-};
-
-export const stopContinue = {
-    label: 'stop + continue',
-    stage: 'stream',
-    templateFields: () => [],
-    defaultConfig: {},
-    async execute(config, { stCtx }) {
-        stCtx?.stopGeneration?.();
-        // GENERATION_STOPPED fires synchronously inside stopGeneration().
-        // The 500ms delay lets the async stream teardown finish before resuming.
-        eventSource.once(event_types.GENERATION_STOPPED, () => {
-            setTimeout(() => window.SillyTavern?.getContext?.()?.generate?.('continue'), 500);
+    renderConfig($el, config, onChange) {
+        $el.html(`
+<small class="trg-hint">Halts generation. The matched text stays in the partial message.</small>
+<label class="trg-check-row" style="margin-top:4px">
+    <input type="checkbox" ${config.andContinue ? 'checked' : ''} />
+    continue after stop
+</label>
+<small class="trg-hint" style="margin-top:2px">When checked, resumes generation after stopping so newly triggered lorebook entries are active in the continued reply.</small>`);
+        $el.find('input[type="checkbox"]').on('change', function () {
+            onChange({ ...config, andContinue: this.checked });
         });
-    },
-    renderConfig($el) {
-        $el.html('<small class="trg-hint">Stops and resumes — newly triggered lorebook entries will be active in the continued reply.</small>');
     },
 };

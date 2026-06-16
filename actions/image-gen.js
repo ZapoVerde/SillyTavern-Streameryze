@@ -39,7 +39,7 @@ export const imageGen = {
         const firstMatch     = kwEsc ? new RegExp(kwEsc, 'i').exec(msg.mes ?? '') : null;
         const upTo           = firstMatch ? (msg.mes ?? '').slice(0, firstMatch.index) : '';
         const historyText    = buildHistoryText(stCtx?.chat, messageId, config.historyTurns ?? 0);
-        const resolvedPrompt = await resolveLbTokens(config.prompt ?? '', matchedKeyword, highlighted, vars);
+        const resolvedPrompt = await resolveLbTokens(config.prompt ?? '', matchedKeyword, highlighted, vars, messageId);
 
         const prompt = interpolate(resolvedPrompt, {
             keyword:  matchedKeyword ?? '',

@@ -109,7 +109,7 @@ export async function applyEarlyActions(text, streamingMessageId, stCtx, getGenI
 
     for (const rule of (s.rules ?? [])) {
         if (!rule.enabled) continue;
-        if (rule.triggers?.some(t => t.type === 'chatComplete')) continue;
+        if (rule.triggers?.some(t => t.type === 'event' && t.config?.event === 'MESSAGE_RECEIVED')) continue;
 
         const ruleVars   = new Set((rule.actions ?? []).map(a => a.config?.outputVar).filter(Boolean));
         const candidates = (rule.actions ?? [])
