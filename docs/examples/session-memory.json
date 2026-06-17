@@ -1,0 +1,25 @@
+{
+  "name": "Session memory",
+  "rules": [
+    {
+      "name": "Summarize and store",
+      "triggers": [ { "type": "event", "event": "MESSAGE_RECEIVED" } ],
+      "actions": [
+        {
+          "type": "call-llm",
+          "output": "silent",
+          "var": "summary",
+          "prompt": "Summarize the key events from the last few exchanges in 2-3 sentences. Focus on what changed: decisions made, things revealed, actions taken.\n\n{{history:[3]}}"
+        },
+        {
+          "type": "update",
+          "target": "lorebook",
+          "lorebook": "MyWorld.json",
+          "title": "Session memory — {{char}}",
+          "keys": "{{char}}, memory, recent events",
+          "content": "{{summary}}"
+        }
+      ]
+    }
+  ]
+}

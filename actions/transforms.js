@@ -21,7 +21,7 @@
 
 export const TRANSFORM_PREFIXES = [
     'trim:', 'upper:', 'lower:', 'lines:', 'words:', 'default:',
-    'chars:', 'last:', 'nth:', 'cap:', 'len:', 'join:', 'replace:', 'bar:',
+    'chars:', 'last:', 'nth:', 'cap:', 'len:', 'join:', 'replace:', 'bar:', 'pad:',
 ];
 
 export function resolveTransforms(template) {
@@ -78,6 +78,13 @@ export function resolveTransforms(template) {
         find ? val.split(find).join(repl) : val,
     );
 
+    // {{pad: N : val}} — right-pad val with spaces to N characters. Truncates with '…' if longer.
+    template = template.replace(/\{\{pad:\s*(\d+):\s*([\s\S]*?)\}\}/g, (_, n, val) => {
+        const w = parseInt(n, 10);
+        if (val.length > w) return val.slice(0, w - 1) + '…';
+        return val + ' '.repeat(w - val.length);
+    });
+
     // {{bar: value : bucketSize : max }} — colon bar chart.
     // One ':' per full bucket. Remainder > 20% of bucket appends '.'. Overflow appends '+'.
     template = template.replace(/\{\{bar:\s*([\d.]+)\s*:\s*([\d.]+)\s*:\s*([\d.]+)\s*\}\}/g, (_, val, bucket, maxCols) => {
@@ -87,8 +94,15 @@ export function resolveTransforms(template) {
         if (!Number.isFinite(n) || !Number.isFinite(b) || b <= 0 || !Number.isFinite(m) || m <= 0) return '';
         if (n >= b * m) return ':'.repeat(m) + '+';
         const full = Math.floor(n / b);
-        return ':'.repeat(full) + (n % b > b * 0.2 ? '.' : '');
+        const result = ':'.repeat(full) + (n % b > b * 0.2 ? '.' : '');
+        console.debug(`[TRG:bar] val=${val} bucket=${bucket} max=${maxCols} → "${result}"`);
+        return result;
     });
+    // debug: flag any unresolved {{bar:}} tokens that didn't match (non-numeric first arg)
+    if (template.includes('{{bar:')) {
+        const unresolved = template.match(/\{\{bar:[^}]*\}\}/g) ?? [];
+        if (unresolved.length) console.debug('[TRG:bar] unresolved tokens:', unresolved);
+    }
 
     return template;
 }

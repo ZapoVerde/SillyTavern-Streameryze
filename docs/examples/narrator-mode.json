@@ -1,0 +1,29 @@
+{
+  "name": "Narrator mode",
+  "rules": [
+    {
+      "name": "Toggle on",
+      "triggers": [
+        { "type": "badge", "style": "top", "label": "Narrator on", "click": "fire" }
+      ],
+      "actions": [
+        { "type": "set-var", "scope": "global", "var": "narratorMode", "value": "on" }
+      ]
+    },
+    {
+      "name": "Narrate when active",
+      "when": "all",
+      "triggers": [
+        { "type": "event", "event": "MESSAGE_RECEIVED" },
+        { "type": "condition", "expression": "globalvar::narratorMode = \"on\"" }
+      ],
+      "actions": [
+        {
+          "type": "call-llm",
+          "output": "append",
+          "prompt": "Add a one-sentence third-person narrator observation at the end of this message. Output only that sentence.\n\n{{message}}"
+        }
+      ]
+    }
+  ]
+}

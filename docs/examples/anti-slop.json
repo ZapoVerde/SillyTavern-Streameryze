@@ -1,0 +1,28 @@
+{
+  "name": "Anti-slop",
+  "rules": [
+    {
+      "name": "Rewrite cliché",
+      "triggers": [
+        {
+          "type": "keyword",
+          "mode": "regex",
+          "pattern": "/\\b(breath\\s+catch\\w*|catch\\w*\\s+breath|anchoring|tether|ledger|claiming|stone\\s+dropped\\s+into\\s+water)\\b/i"
+        }
+      ],
+      "actions": [
+        {
+          "type": "compose",
+          "var": "banned",
+          "note": "Store the full list once so {{banned}} is available in the LLM prompt below.",
+          "template": "breath catch / catch breath\nanchoring\ntether\nledger\nclaiming\nstone dropped into water"
+        },
+        {
+          "type": "call-llm",
+          "output": "replace-paragraph",
+          "prompt": "The paragraph contains the prohibited phrase \"{{keyword}}\".\n\nFull banned list:\n{{banned}}\n\nRewrite this paragraph to remove the phrase entirely. Change the physical action or internal reaction — do not substitute a synonym or near-synonym. Output only the rewritten paragraph, nothing else.\n\n{{paragraph}}"
+        }
+      ]
+    }
+  ]
+}

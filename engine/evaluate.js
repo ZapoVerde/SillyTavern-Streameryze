@@ -57,5 +57,12 @@ export function ruleHasStage(rule, stage) {
 export function getVarDeps(config, knownVars) {
     if (!knownVars.size) return [];
     const text = Object.values(config ?? {}).filter(v => typeof v === 'string').join(' ');
-    return [...text.matchAll(/\{\{([^{}]+)\}\}/g)].map(m => m[1].trim()).filter(n => knownVars.has(n));
+    const templateDeps = [...text.matchAll(/\{\{([^{}]+)\}\}/g)].map(m => m[1].trim());
+    // {{mapLines: sep : sourceName}} — source is a bare var name, not wrapped in {{}}
+    const mapLinesDeps = [];
+    for (const m of text.matchAll(/\{\{mapLines((?:[^}])*)\}\}/g)) {
+        const parts = m[1].slice(1).split(' : ');
+        if (parts.length >= 2) mapLinesDeps.push(parts.slice(1).join(' : ').trim());
+    }
+    return [...new Set([...templateDeps, ...mapLinesDeps])].filter(n => knownVars.has(n));
 }

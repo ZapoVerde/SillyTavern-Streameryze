@@ -122,6 +122,7 @@ function makeRuleBadgeButton(ruleId, messageId, label, color, clickAction) {
  * splitOn splits the resolved label into N badges.
  * style 'bottom' → stacked in .trg-bottom-badges after .mes_text.
  * style 'top'    → inline row after .ch_name (default).
+ * graph: true    → applies monospace/pre font to badges in either top or bottom position.
  */
 export function renderRuleBadges(messageId, defs) {
     console.debug(`[TRG:badge] renderRuleBadges mesId=${messageId} defs=${defs?.length ?? 0}`, defs?.map(d => d.label));
@@ -152,7 +153,7 @@ export function renderRuleBadges(messageId, defs) {
 
         const bucket = def.style === 'bottom' ? btmItems : topItems;
         for (const label of labels) {
-            bucket.push({ ruleId: def.ruleId, label, color, clickAction });
+            bucket.push({ ruleId: def.ruleId, label, color, clickAction, graph: def.graph === true });
         }
     }
 
@@ -162,6 +163,7 @@ export function renderRuleBadges(messageId, defs) {
             let $ref = $mes.find('.trg-badge').length ? $mes.find('.trg-badge') : $chName;
             for (const item of topItems) {
                 const $btn = makeRuleBadgeButton(item.ruleId, messageId, item.label, item.color, item.clickAction);
+                if (item.graph) $btn.addClass('trg-graph');
                 $ref.after($btn);
                 $ref = $btn;
             }
@@ -171,7 +173,8 @@ export function renderRuleBadges(messageId, defs) {
     if (btmItems.length) {
         const $mesText = $mes.find('.mes_text');
         if ($mesText.length) {
-            const $container = $('<div class="trg-bottom-badges"></div>');
+            const isGraph    = btmItems.some(i => i.graph);
+            const $container = $(`<div class="trg-bottom-badges${isGraph ? ' trg-graph' : ''}"></div>`);
             $mesText.after($container);
             for (const item of btmItems) {
                 $container.append(makeRuleBadgeButton(item.ruleId, messageId, item.label, item.color, item.clickAction));
@@ -188,6 +191,32 @@ export function reinjectAllBadges() {
     const stCtx = window.SillyTavern?.getContext?.();
     if (!stCtx?.chat) return;
     stCtx.chat.forEach((_msg, idx) => ensureBadge(idx));
+}
+
+// ─── Inline badge removal watcher (debug) ────────────────────────────────────
+
+let _removalWatcher = null;
+export function startInlineBadgeRemovalWatcher() {
+    if (_removalWatcher) return;
+    _removalWatcher = new MutationObserver(mutations => {
+        for (const m of mutations) {
+            for (const node of m.removedNodes) {
+                const spans = node.nodeType === 1 && node.classList?.contains('trg-inline-badge')
+                    ? [node]
+                    : (node.nodeType === 1 ? [...node.querySelectorAll('.trg-inline-badge')] : []);
+                if (!spans.length) continue;
+                const mesEl = m.target.closest?.('[mesid]');
+                console.warn(`[TRG:badge:REMOVAL] ${spans.length} inline badge(s) removed from mesId=${mesEl?.getAttribute('mesid') ?? '?'} kw=${spans.map(s => s.dataset?.kw).join(',')}`, new Error('removal stack').stack);
+            }
+        }
+    });
+    _removalWatcher.observe(document.body, { childList: true, subtree: true });
+    console.debug('[TRG:badge] inline badge removal watcher started');
+}
+export function stopInlineBadgeRemovalWatcher() {
+    _removalWatcher?.disconnect();
+    _removalWatcher = null;
+    console.debug('[TRG:badge] inline badge removal watcher stopped');
 }
 
 // ─── Inline keyword badges (absorbed from inline-badge.js) ───────────────────

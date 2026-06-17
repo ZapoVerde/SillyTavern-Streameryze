@@ -23,7 +23,7 @@ import { esc, updateKwPreview } from './kw-preview.js';
 
 export const badgeTrigger = {
     label: 'badge',
-    defaultConfig: { style: 'top', label: 'run', color: '#8888ff', splitOn: '', keywords: '', caseSensitive: false, clickAction: 'fire' },
+    defaultConfig: { style: 'top', graph: false, label: 'run', color: '#8888ff', splitOn: '', keywords: '', caseSensitive: false, clickAction: 'fire' },
     async test() {
         // Never auto-fires. Activated only by clicking the rendered badge.
         return null;
@@ -50,6 +50,13 @@ export const badgeTrigger = {
         <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
             <label style="font-size:.8em;opacity:.6;flex-shrink:0;min-width:38px">split</label>
             <input type="text" class="text_pole trg-badge-spliton" placeholder="\\n or , — leave empty for single badge" value="${esc(config.splitOn ?? '')}" style="flex:1;font-size:.85em" />
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
+            <label style="font-size:.8em;opacity:.6;flex-shrink:0;min-width:38px"></label>
+            <label class="trg-check-row" style="font-size:.8em">
+                <input type="checkbox" class="trg-badge-graph" ${config.graph ? 'checked' : ''} />
+                graph mode — monospace font, use <code>{{pad:N:{{.1}}}}</code> to align columns
+            </label>
         </div>
     </div>
     <div class="trg-badge-inline-row"${s!=='inline'?' style="display:none"':''}>
@@ -105,6 +112,7 @@ export const badgeTrigger = {
             const style = $el.find('.trg-badge-style').val();
             return {
                 style,
+                graph:         $el.find('.trg-badge-graph').prop('checked'),
                 label:         $el.find('.trg-badge-label').val(),
                 splitOn:       $el.find('.trg-badge-spliton').val(),
                 color:         style === 'inline'
@@ -118,6 +126,7 @@ export const badgeTrigger = {
 
         $el.find('.trg-badge-style').on('change', function () { syncVisibility(this.value); onChange(read()); });
         $el.find('.trg-badge-label, .trg-badge-spliton').on('input', () => onChange(read()));
+        $el.find('.trg-badge-graph').on('change', () => onChange(read()));
         $el.find('.trg-badge-color-top, .trg-badge-color-inline').on('input', () => onChange(read()));
         $el.find('.trg-badge-clickaction').on('change', () => onChange(read()));
         $el.find('.trg-badge-kw').on('input', function () {

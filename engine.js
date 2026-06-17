@@ -37,14 +37,16 @@ import { clearWiCache }                                from './triggers/lb-query
 import { clearTurnVars }                              from './triggers/turn-vars.js';
 import { setCurrentEvent, clearCurrentEvent }         from './triggers/event.js';
 import { clearPrefetchCache, isDispatchActive }                              from './actions/index.js';
-import { ensureBadge, setBadge, renderRuleBadges, injectInlineBadges, reinjectAllInlineBadges, removeAllInlineBadges } from './badge.js';
+import { ensureBadge, setBadge, renderRuleBadges, injectInlineBadges, reinjectAllInlineBadges, removeAllInlineBadges, startInlineBadgeRemovalWatcher, stopInlineBadgeRemovalWatcher } from './badge.js';
 import { evaluateTriggers, ruleHasStage }                                     from './engine/evaluate.js';
 import { stopPatchObserver, applyLivePatch, applyPrefetch, applyInlineBadgePatch, clearLivePatchState, highlightPendingKeyword, clearPendingHighlights } from './engine/live-patch.js';
 import { executeActions, applyEarlyActions, clearEarlyFired }                from './engine/execute.js';
 import { trgLog, trgPerf }                                                    from './logger.js';
 
-let _generationId = 0;
-const _fired      = new Set();
+let _generationId    = 0;
+const _fired         = new Set();
+let _firstTokenFired = false;
+let _prevLastId      = -1;
 
 function _isBadgeTrigger(t) {
     return t.type === 'badge' && t.config?.style !== 'inline' || t.type === 'badgeTrigger';
@@ -65,6 +67,7 @@ function getRuleBadgeDefs(rules) {
                 label:       cfg.label || r.name || 'run',
                 color:       cfg.color || '#8888ff',
                 style:       legacy ? 'top' : (cfg.style || 'top'),
+                graph:       cfg.graph === true,
                 splitOn:     cfg.splitOn || '',
                 clickAction: cfg.clickAction || 'fire',
             };
@@ -122,8 +125,9 @@ export function reinjectInlineBadges(messageId = null) {
 
 export async function onGenerationStarted() {
     if (isDispatchActive()) return;
+    stopInlineBadgeRemovalWatcher();
     _generationId++;
-    removeAllInlineBadges();
+    _firstTokenFired = false;
     clearLivePatchState();
     _fired.clear();
     clearEarlyFired();
@@ -131,8 +135,7 @@ export async function onGenerationStarted() {
     clearWiCache();
     clearTurnVars();
     const stCtx = window.SillyTavern?.getContext?.();
-    const lastId = (stCtx?.chat?.length ?? 0) - 1;
-    if (lastId >= 0) setBadge(lastId, 'unchanged');
+    _prevLastId = (stCtx?.chat?.length ?? 0) - 1;
     trgLog('generation started — dedup cleared');
 
     const s = getSettings();
@@ -161,6 +164,11 @@ export async function onGenerationStarted() {
 export async function onStreamToken(text) {
     const s = getSettings();
     if (!s?.enabled) return;
+    if (!_firstTokenFired) {
+        _firstTokenFired = true;
+        if (_prevLastId >= 0) setBadge(_prevLastId, 'unchanged');
+        removeAllInlineBadges();
+    }
     const stCtx = window.SillyTavern?.getContext?.();
 
     for (const rule of getEnabledRules(s)) {
@@ -193,6 +201,7 @@ export async function onMessageReceived(messageId) {
     const stCtx = window.SillyTavern?.getContext?.();
     const text  = stCtx?.chat?.[messageId]?.mes ?? '';
 
+    startInlineBadgeRemovalWatcher();
     setCurrentEvent('MESSAGE_RECEIVED');
     ensureBadge(messageId);
     const _enabledRules = getEnabledRules(s);
@@ -263,6 +272,29 @@ export async function onMessageReceived(messageId) {
         trgLog('match (stream/non-streaming)', { ruleId: rule.id, matched });
         _fired.add(key);
         await executeActions(rule, 'stream', { matchedKeyword: matched, stCtx }, () => _generationId);
+    }
+}
+
+export async function onMessageSwiped(messageId) {
+    clearTurnVars();
+    const s = getSettings();
+    if (!s?.enabled) return;
+    const candidates = getEnabledRules(s).filter(r =>
+        r.triggers?.some(t => t.type === 'event' && t.config?.event === 'MESSAGE_SWIPED')
+    );
+    if (!candidates.length) return;
+    const stCtx = window.SillyTavern?.getContext?.();
+    setCurrentEvent('MESSAGE_SWIPED');
+    try {
+        for (const rule of candidates) {
+            if (!ruleHasStage(rule, 'postMessage')) continue;
+            const matched = await evaluateTriggers(rule, '');
+            if (matched === null) { trgLog('no match (messageSwiped)', { ruleId: rule.id }); continue; }
+            trgLog('match (messageSwiped)', { ruleId: rule.id, matched });
+            await executeActions(rule, 'postMessage', { matchedKeyword: matched, messageId, stCtx }, () => _generationId);
+        }
+    } finally {
+        clearCurrentEvent();
     }
 }
 

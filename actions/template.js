@@ -4,9 +4,10 @@
  * @architectural-role IO — template interpolation and prompt-slot/lorebook/history token pre-resolution
  * @description
  * Interpolates {{variable}} tokens and {{if}} blocks in action template strings.
- * Pre-resolves {{lb...}}, {{ps...}}, {{psRows}}, {{mapLines}}, and {{history:N}} tokens before interpolation.
+ * Pre-resolves {{lb...}}, {{ps...}}, {{psRows}}, {{psCharSum}}, {{mapLines}}, and {{history:N}} tokens before interpolation.
  * {{psName}} and {{psContent}} surface the context stack (rawPrompt) from the current generation.
  * {{psRows}} emits the context stack as tab-separated identifier\tcharCount lines for use with {{mapLines}}.
+ * {{psCharSum}} sums the character counts of matching slots and emits a single integer (useful for aggregated rows).
  * String transform tokens ({{trim:}}, {{upper:}}, {{lower:}}, {{lines:}}, {{words:}}, {{default:}})
  * are resolved as the final pass after math evaluation; see transforms.js for the full set.
  * Used by action execute() methods and by the engine to classify template dependencies.
@@ -67,11 +68,20 @@ function _globTest(pattern, str) {
     return re.test(str);
 }
 
-// null → matches everything; [] → matches nothing; array → glob-test any
-function _filterMatches(items, str) {
+// null → matches everything; [] → matches nothing; array → glob-test any candidate string
+// Patterns prefixed with ! are exclusions: [!chatHistory*] excludes all chatHistory-N slots.
+// Exclusions are evaluated across ALL candidate strings as a group — if the identifier
+// OR the display name matches an exclusion pattern, the row is excluded.
+// If only exclusions are present, everything not excluded passes.
+// Mixed: inclusions are applied first (id OR name), then exclusions veto.
+function _filterMatches(items, ...strs) {
     if (items === null) return true;
     if (!items.length)  return false;
-    return items.some(p => _globTest(p, str));
+    const includes = items.filter(p => !p.startsWith('!'));
+    const excludes = items.filter(p =>  p.startsWith('!')).map(p => p.slice(1));
+    if (excludes.some(p => strs.some(s => _globTest(p, s)))) return false;
+    if (!includes.length) return true;
+    return includes.some(p => strs.some(s => _globTest(p, s)));
 }
 
 // ---------------------------------------------------------------------------
@@ -97,7 +107,7 @@ function resolvePsTokens(template, messageId, vars) {
     if (!tokens.length) return template;
 
     const defs     = oai_settings?.prompts ?? [];
-    const messages = promptManager?.messages?.getCollection() ?? [];
+    const messages = promptManager?.messages?.flatten() ?? [];
 
     let result = template;
     for (const m of tokens) {
@@ -110,9 +120,8 @@ function resolvePsTokens(template, messageId, vars) {
 
         const matched = messages.filter(msg => {
             if (!msg.identifier) return false;
-            if (_filterMatches(nameFilter, msg.identifier)) return true;
             const def = defs.find(p => p.identifier === msg.identifier);
-            return def ? _filterMatches(nameFilter, def.name ?? '') : false;
+            return _filterMatches(nameFilter, msg.identifier, def?.name ?? '');
         });
 
         let replacement = '';
@@ -156,12 +165,100 @@ function resolvePsRows(template, messageId, vars) {
 
     const RE       = /\{\{psRows((?::[^}]*)*)\}\}/g;
     const defs     = oai_settings?.prompts ?? [];
-    const messages = promptManager?.messages?.getCollection() ?? [];
+    const messages = promptManager?.messages?.flatten() ?? [];
+
+    console.debug(`[TRG:psRows] mesId=${messageId} promptManager=${!!promptManager} messages=${messages.length} defs=${defs.length}`);
 
     if (!messages.length) return template.replace(RE, '');
 
     const allRows = messages
-        .filter(msg => msg.identifier && typeof msg.content === 'string')
+        .filter(msg => msg.identifier && typeof msg.content === 'string' && msg.content.length > 0)
+        .map(msg => {
+            const def         = defs.find(p => p.identifier === msg.identifier);
+            const displayName = def?.name ?? msg.identifier;
+            return [displayName, msg.content.length, msg.identifier];
+        });
+
+    console.debug(`[TRG:psRows] allRows=${allRows.length} sample:`, allRows.slice(0, 3).map(([n, c]) => `${n}\t${c}`));
+
+    return template.replace(RE, (_, argStr) => {
+        const parts      = argStr ? argStr.slice(1).split(':') : [];
+        const nameArg    = _parseArg(parts[0]);
+        const nameFilter = _resolveArg(nameArg, vars);
+
+        const filtered = allRows
+            .filter(([name, , id]) => _filterMatches(nameFilter, id, name));
+        const output = filtered.map(([name, charCount]) => `${name}\t${charCount}`).join('\n');
+        console.debug(`[TRG:psRows] filter="${nameFilter ?? '(none)'}" matched=${filtered.length} output=${JSON.stringify(output.slice(0, 80))}`);
+        return output;
+    });
+}
+
+// ---------------------------------------------------------------------------
+// {{psMaxNameLen}} — longest display name length among matching prompt slots
+//
+// Syntax: {{psMaxNameLen:[nameFilter]}}
+//
+// Returns the character length of the longest display name among matching slots
+// as a plain integer string. Use as a turn variable to drive {{pad:N:}} width
+// dynamically so column bars align regardless of preset or chat length.
+// Example: set name_pad = {{psMaxNameLen:[!chatHistory*]}}
+//          then use     {{pad:{{name_pad}}:{{.1}}}} in the mapLines body
+// ---------------------------------------------------------------------------
+
+function resolvePsMaxNameLen(template, messageId, vars) {
+    if (!template || !template.includes('{{psMaxNameLen')) return template;
+    if (messageId === null || messageId === undefined) return template;
+
+    const RE       = /\{\{psMaxNameLen((?::[^}]*)*)\}\}/g;
+    const defs     = oai_settings?.prompts ?? [];
+    const messages = promptManager?.messages?.flatten() ?? [];
+
+    if (!messages.length) return template.replace(RE, '0');
+
+    const allRows = messages
+        .filter(msg => msg.identifier && typeof msg.content === 'string' && msg.content.length > 0)
+        .map(msg => {
+            const def         = defs.find(p => p.identifier === msg.identifier);
+            const displayName = def?.name ?? msg.identifier;
+            return [displayName, msg.identifier];
+        });
+
+    return template.replace(RE, (_, argStr) => {
+        const parts      = argStr ? argStr.slice(1).split(':') : [];
+        const nameArg    = _parseArg(parts[0]);
+        const nameFilter = _resolveArg(nameArg, vars);
+
+        const matched = allRows.filter(([name, id]) => _filterMatches(nameFilter, id, name));
+        const max = matched.reduce((m, [name]) => Math.max(m, name.length), 0);
+        console.debug(`[TRG:psMaxNameLen] filter="${JSON.stringify(nameFilter)}" matched=${matched.length} max=${max} longest="${matched.find(([n]) => n.length === max)?.[0] ?? ''}"`);
+        return String(max);
+    });
+}
+
+// ---------------------------------------------------------------------------
+// {{psCharSum}} — aggregate character count for matching prompt slots
+//
+// Syntax: {{psCharSum:[nameFilter]}}
+//
+// Sums the character counts of all matching prompt slots and emits the total
+// as a plain integer string. Intended for aggregated rows such as a rolled-up
+// "Chat History" line added after {{psRows:[!chatHistory*]}} excludes those slots.
+// Example: {{psCharSum:[chatHistory*]}}  →  "4782"
+// ---------------------------------------------------------------------------
+
+function resolvePsCharSum(template, messageId, vars) {
+    if (!template || !template.includes('{{psCharSum')) return template;
+    if (messageId === null || messageId === undefined) return template;
+
+    const RE       = /\{\{psCharSum((?::[^}]*)*)\}\}/g;
+    const defs     = oai_settings?.prompts ?? [];
+    const messages = promptManager?.messages?.flatten() ?? [];
+
+    if (!messages.length) return template.replace(RE, '0');
+
+    const allRows = messages
+        .filter(msg => msg.identifier && typeof msg.content === 'string' && msg.content.length > 0)
         .map(msg => {
             const def         = defs.find(p => p.identifier === msg.identifier);
             const displayName = def?.name ?? msg.identifier;
@@ -173,11 +270,10 @@ function resolvePsRows(template, messageId, vars) {
         const nameArg    = _parseArg(parts[0]);
         const nameFilter = _resolveArg(nameArg, vars);
 
-        return allRows
-            .filter(([name, , id]) =>
-                _filterMatches(nameFilter, id) || _filterMatches(nameFilter, name))
-            .map(([name, charCount]) => `${name}\t${charCount}`)
-            .join('\n');
+        const matched = allRows.filter(([name, , id]) => _filterMatches(nameFilter, id, name));
+        const total   = matched.reduce((sum, [, charCount]) => sum + charCount, 0);
+        console.debug(`[TRG:psCharSum] filter="${JSON.stringify(nameFilter)}" matched=${matched.length} total=${total}`);
+        return String(total);
     });
 }
 
@@ -282,7 +378,14 @@ export async function resolveLbTokens(template, _matchedKeyword, _highlighted, v
         template = resolvePsTokens(template, messageId, mergedVars);
     if (template.includes('{{psRows'))
         template = resolvePsRows(template, messageId, mergedVars);
-    if (template.includes('{{mapLines'))
+    if (template.includes('{{psMaxNameLen'))
+        template = resolvePsMaxNameLen(template, messageId, mergedVars);
+    if (template.includes('{{psCharSum'))
+        template = resolvePsCharSum(template, messageId, mergedVars);
+    if (template.includes('{{mapLines')) {
+        const mapVarNames = [...template.matchAll(/\{\{mapLines(?:[^}])*:\s*([^:}\s][^}]*?)\s*\}\}/g)].map(m => m[1].trim());
+        console.debug(`[TRG:mapLines:pre] vars available=[${Object.keys(mergedVars).join(', ')}] sources=${JSON.stringify(mapVarNames)} ps_rows.len=${(mergedVars['ps_rows'] ?? '').length}`);
         template = resolveMapLines(template, mergedVars);
+    }
     return template;
 }

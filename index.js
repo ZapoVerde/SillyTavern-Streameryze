@@ -18,7 +18,7 @@
  */
 
 import { eventSource, event_types }                                        from '../../../../script.js';
-import { onGenerationStarted, onStreamToken, onMessageReceived, onCharacterMessageRendered, fireRuleManually, reinjectRuleBadges, reinjectInlineBadges } from './engine.js';
+import { onGenerationStarted, onStreamToken, onMessageReceived, onCharacterMessageRendered, onMessageSwiped, fireRuleManually, reinjectRuleBadges, reinjectInlineBadges } from './engine.js';
 import { ensureBadge, setBadge, reinjectAllBadges, removeAllBadges }       from './badge.js';
 import { loadSettings }                                                    from './settings/storage.js';
 import { addSettingsPanel }                                                from './settings/panel.js';
@@ -30,6 +30,10 @@ eventSource.on(event_types.STREAM_TOKEN_RECEIVED,       onStreamToken);
 eventSource.on(event_types.MESSAGE_RECEIVED,            onMessageReceived);
 eventSource.on(event_types.CHAT_CHANGED,              () => { reinjectAllBadges(); reinjectRuleBadges(); reinjectInlineBadges(); });
 eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED,  (messageId) => { ensureBadge(messageId); reinjectRuleBadges(messageId); reinjectInlineBadges(messageId); onCharacterMessageRendered(messageId); });
+eventSource.on(event_types.MESSAGE_SWIPED, (messageId) => {
+    $(`.mes[mesid="${messageId}"]`).find('.trg-rule-badge, .trg-bottom-badges').remove();
+    onMessageSwiped(messageId);
+});
 
 $(document).on('click', '.trg-badge', async function () {
     const messageId = parseInt($(this).closest('.mes').attr('mesid'), 10);

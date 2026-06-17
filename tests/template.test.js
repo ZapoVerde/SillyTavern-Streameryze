@@ -25,11 +25,11 @@ vi.mock('../../../../../scripts/variables.js', () => ({
 }));
 
 // Mock ST core files imported by template.js for prompt-slot resolution.
-// promptManager.messages.getCollection() returns the live MOCK_MESSAGES array so
+// promptManager.messages.flatten() returns the live MOCK_MESSAGES array so
 // tests can mutate it via setupPs() without needing to replace the mock object.
 vi.mock('../../../../../scripts/openai.js', () => ({
     oai_settings:  MOCK_OAI_SETTINGS,
-    promptManager: { messages: { getCollection: () => MOCK_MESSAGES } },
+    promptManager: { messages: { flatten: () => MOCK_MESSAGES } },
 }));
 
 import { interpolate, getTemplateTier, resolveLbTokens } from '../actions/template.js';
@@ -491,6 +491,16 @@ describe('{{psRows}} — all slots', () => {
         expect(await resolveLbTokens('{{psRows:[ghost]}}', '', '', {}, PS_MES_ID)).toBe('');
     });
 
+    it('exclusion filter !pattern omits matching rows', async () => {
+        expect(await resolveLbTokens('{{psRows:[!worldInfo*]}}', '', '', {}, PS_MES_ID))
+            .toBe('Main Prompt\t14\nCNZ RAG\t17\nchatHistory-0\t6');
+    });
+
+    it('exclusion-only filter passes everything not excluded', async () => {
+        expect(await resolveLbTokens('{{psRows:[!main]}}', '', '', {}, PS_MES_ID))
+            .toBe('World Info (Before)\t18\nWorld Info (After)\t17\nCNZ RAG\t17\nchatHistory-0\t6');
+    });
+
     it('preserves surrounding template text', async () => {
         expect(await resolveLbTokens('Slots:\n{{psRows:[main]}}', '', '', {}, PS_MES_ID))
             .toBe('Slots:\nMain Prompt\t14');
@@ -513,13 +523,105 @@ describe('{{psRows}} — no-op and edge cases', () => {
         expect(await resolveLbTokens('{{psRows}}', '', '', {}, PS_MES_ID)).toBe('');
     });
 
-    it('includes slots with empty content as zero-length rows using display names', async () => {
+    it('excludes slots with empty content from results', async () => {
         setupPs([
             { role: 'system', content: '',       identifier: 'main'    },
             { role: 'system', content: 'Hello.', identifier: 'cnz_rag' },
         ]);
         expect(await resolveLbTokens('{{psRows}}', '', '', {}, PS_MES_ID))
-            .toBe('Main Prompt\t0\nCNZ RAG\t6');
+            .toBe('CNZ RAG\t6');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// {{psMaxNameLen}} — longest display name length
+// ---------------------------------------------------------------------------
+
+describe('{{psMaxNameLen}} — longest display name length', () => {
+    beforeEach(() => setupPs());
+
+    it('bare token returns max name length across all slots', async () => {
+        // Names: 'Main Prompt'(11), 'World Info (Before)'(19), 'World Info (After)'(18),
+        //        'CNZ RAG'(7), 'chatHistory-0'(13) — max = 19
+        expect(await resolveLbTokens('{{psMaxNameLen}}', '', '', {}, PS_MES_ID)).toBe('19');
+    });
+
+    it('exclusion filter returns max of remaining names', async () => {
+        // Excluding chatHistory-0 (13): max of 11, 19, 18, 7 = 19
+        expect(await resolveLbTokens('{{psMaxNameLen:[!chatHistory*]}}', '', '', {}, PS_MES_ID)).toBe('19');
+    });
+
+    it('glob filter returns max within the matching set', async () => {
+        // worldInfo*: 'World Info (Before)'(19), 'World Info (After)'(18) — max = 19
+        expect(await resolveLbTokens('{{psMaxNameLen:[worldInfo*]}}', '', '', {}, PS_MES_ID)).toBe('19');
+    });
+
+    it('single-slot filter returns that name length', async () => {
+        // 'CNZ RAG' = 7
+        expect(await resolveLbTokens('{{psMaxNameLen:[cnz_rag]}}', '', '', {}, PS_MES_ID)).toBe('7');
+    });
+
+    it('unmatched filter returns 0', async () => {
+        expect(await resolveLbTokens('{{psMaxNameLen:[ghost]}}', '', '', {}, PS_MES_ID)).toBe('0');
+    });
+
+    it('returns token unchanged when messageId is null', async () => {
+        expect(await resolveLbTokens('{{psMaxNameLen}}', '', '', {}, null)).toBe('{{psMaxNameLen}}');
+    });
+
+    it('returns 0 when messages is empty', async () => {
+        setupPs([], PS_DEFS);
+        expect(await resolveLbTokens('{{psMaxNameLen}}', '', '', {}, PS_MES_ID)).toBe('0');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// {{psCharSum}} — aggregate character count
+// ---------------------------------------------------------------------------
+
+describe('{{psCharSum}} — aggregate character count', () => {
+    beforeEach(() => setupPs());
+
+    it('bare token sums all slot char counts', async () => {
+        // 14 + 18 + 17 + 17 + 6 = 72
+        expect(await resolveLbTokens('{{psCharSum}}', '', '', {}, PS_MES_ID)).toBe('72');
+    });
+
+    it('filter by glob returns summed count for matching slots', async () => {
+        expect(await resolveLbTokens('{{psCharSum:[chatHistory*]}}', '', '', {}, PS_MES_ID)).toBe('6');
+    });
+
+    it('filter by identifier literal sums just that slot', async () => {
+        expect(await resolveLbTokens('{{psCharSum:[cnz_rag]}}', '', '', {}, PS_MES_ID)).toBe('17');
+    });
+
+    it('exclusion filter sums everything not excluded', async () => {
+        // all (72) minus chatHistory-0 (6) = 66
+        expect(await resolveLbTokens('{{psCharSum:[!chatHistory*]}}', '', '', {}, PS_MES_ID)).toBe('66');
+    });
+
+    it('unmatched filter returns 0', async () => {
+        expect(await resolveLbTokens('{{psCharSum:[ghost]}}', '', '', {}, PS_MES_ID)).toBe('0');
+    });
+
+    it('returns token unchanged when messageId is null', async () => {
+        expect(await resolveLbTokens('{{psCharSum:[chatHistory*]}}', '', '', {}, null))
+            .toBe('{{psCharSum:[chatHistory*]}}');
+    });
+
+    it('returns token unchanged when messageId is undefined', async () => {
+        expect(await resolveLbTokens('{{psCharSum:[chatHistory*]}}', '', '', {}, undefined))
+            .toBe('{{psCharSum:[chatHistory*]}}');
+    });
+
+    it('returns 0 when messages is empty', async () => {
+        setupPs([], PS_DEFS);
+        expect(await resolveLbTokens('{{psCharSum}}', '', '', {}, PS_MES_ID)).toBe('0');
+    });
+
+    it('can be used inline alongside other text', async () => {
+        const result = await resolveLbTokens('total: {{psCharSum:[chatHistory*]}} chars', '', '', {}, PS_MES_ID);
+        expect(result).toBe('total: 6 chars');
     });
 });
 

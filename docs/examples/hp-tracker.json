@@ -1,0 +1,30 @@
+{
+  "name": "HP tracker",
+  "rules": [
+    {
+      "name": "Apply damage",
+      "triggers": [ { "type": "keyword", "mode": "regex", "pattern": "/takes? (\\d+) damage/i" } ],
+      "actions": [
+        {
+          "type": "compose",
+          "var": "new_hp",
+          "template": "{{math: {{default: 100: {{chatvar::hp}}}} - {{keyword}}}}"
+        },
+        {
+          "type": "set-var",
+          "scope": "chat",
+          "var": "hp",
+          "value": "{{new_hp}}"
+        }
+      ]
+    },
+    {
+      "name": "Low HP warning",
+      "note": "Fires in the same postMessage pass once chatvar::hp is updated by the rule above.",
+      "triggers": [ { "type": "condition", "expression": "chatvar::hp < 20" } ],
+      "actions": [
+        { "type": "slash-cmd", "command": "/echo HP critical: {{chatvar::hp}}" }
+      ]
+    }
+  ]
+}

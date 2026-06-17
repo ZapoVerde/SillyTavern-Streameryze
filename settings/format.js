@@ -141,6 +141,7 @@ const TRIGGER_CFG_I = {
         style:         r.style        ?? 'top',
         label:         r.label        ?? 'run',
         color:         r.color        ?? '#8888ff',
+        graph:         r.graph        === true,
         splitOn:       r['split-on']  ?? '',
         keywords:      r.keywords     ?? '',
         caseSensitive: r['case-sensitive'] ?? false,
@@ -231,6 +232,7 @@ const TRIGGER_CFG_E = {
         } else {
             out.label = cfg.label ?? 'run';
             out.color = cfg.color ?? '#8888ff';
+            if (cfg.graph)   out.graph      = true;
             if (cfg.splitOn) out['split-on'] = cfg.splitOn;
         }
         if ((cfg.clickAction ?? 'fire') !== 'fire') out.click = cfg.clickAction;

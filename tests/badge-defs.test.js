@@ -97,7 +97,7 @@ describe('reinjectRuleBadges — badge defs routing', () => {
         ]});
         reinjectRuleBadges(0);
         expect(renderRuleBadges).toHaveBeenCalledWith(0, [
-            { ruleId: 'r1', label: 'Go', color: '#ff0000', style: 'top', splitOn: '', clickAction: 'fire' },
+            { ruleId: 'r1', label: 'Go', color: '#ff0000', style: 'top', graph: false, splitOn: '', clickAction: 'fire' },
         ]);
     });
 
@@ -107,7 +107,7 @@ describe('reinjectRuleBadges — badge defs routing', () => {
         ]});
         reinjectRuleBadges(0);
         expect(renderRuleBadges).toHaveBeenCalledWith(0, [
-            { ruleId: 'r1', label: '{{opts}}', color: '#8888ff', style: 'bottom', splitOn: '\\n', clickAction: 'inject-send' },
+            { ruleId: 'r1', label: '{{opts}}', color: '#8888ff', style: 'bottom', graph: false, splitOn: '\\n', clickAction: 'inject-send' },
         ]);
     });
 

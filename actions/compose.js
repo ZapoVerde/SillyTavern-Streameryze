@@ -44,6 +44,7 @@ export const compose = {
             user:    name1 ?? '',
         }, vars);
         trgDev(debug, `  compose "${config.outputVar}" =`, result);
+        console.debug(`[TRG:compose] "${config.outputVar}" = ${JSON.stringify(result.slice(0, 120))}${result.length > 120 ? `… (${result.length} chars)` : ''}`);
         vars[config.outputVar] = result;
     },
     renderConfig($el, config, onChange, ctx) {

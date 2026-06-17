@@ -1,0 +1,24 @@
+{
+  "name": "Mood routing",
+  "rules": [
+    {
+      "name": "Parse mood",
+      "triggers": [ { "type": "event", "event": "MESSAGE_RECEIVED" } ],
+      "actions": [
+        {
+          "type": "call-llm",
+          "output": "silent",
+          "var": "mood",
+          "prompt": "Read the message and output one word for {{char}}'s emotional state: happy, sad, angry, fearful, or neutral. Output the word only.\n\n{{message}}"
+        }
+      ]
+    },
+    {
+      "name": "React to anger",
+      "triggers": [ { "type": "var-match", "var": "mood", "operator": "equals", "value": "angry" } ],
+      "actions": [
+        { "type": "slash-cmd", "command": "/echo {{char}} seems angry this turn" }
+      ]
+    }
+  ]
+}

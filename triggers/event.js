@@ -35,9 +35,10 @@ export const eventTrigger = {
     renderConfig($el, config, onChange) {
         const ev = config.event ?? 'MESSAGE_RECEIVED';
         const hints = {
-            MESSAGE_RECEIVED:           'Fires once after each AI message is fully received. Replaces the legacy "chat complete" trigger.',
+            MESSAGE_RECEIVED:           'Fires once after each AI message is fully received.',
             GENERATION_STARTED:         'Fires when a new AI turn begins, before any tokens arrive. Use to clear variables or prepare state for the coming turn.',
             CHARACTER_MESSAGE_RENDERED: 'Fires each time a message is rendered to the DOM, including on chat reload. Use with care — may run for every message on page load.',
+            MESSAGE_SWIPED:             'Fires when the user swipes to a different response. Turn variables are cleared on swipe so badges reset to their default state.',
         };
         $el.html(`
 <div style="display:flex;flex-direction:column;gap:6px">
@@ -45,6 +46,7 @@ export const eventTrigger = {
         <option value="MESSAGE_RECEIVED"           ${ev === 'MESSAGE_RECEIVED'           ? 'selected' : ''}>chat complete</option>
         <option value="GENERATION_STARTED"         ${ev === 'GENERATION_STARTED'         ? 'selected' : ''}>generation started</option>
         <option value="CHARACTER_MESSAGE_RENDERED" ${ev === 'CHARACTER_MESSAGE_RENDERED' ? 'selected' : ''}>message rendered</option>
+        <option value="MESSAGE_SWIPED"             ${ev === 'MESSAGE_SWIPED'             ? 'selected' : ''}>message swiped</option>
     </select>
     <small class="trg-event-hint trg-hint">${hints[ev] ?? ''}</small>
 </div>`);

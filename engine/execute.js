@@ -67,9 +67,11 @@ export async function executeActions(rule, stage, execCtx, getGenId) {
 
     const runOne = async ({ a, idx }) => {
         const deps = getVarDeps(a.config, knownVars);
+        console.debug(`[TRG:exec] action[${idx}] type=${a.type} outputVar=${a.config?.outputVar ?? '—'} deps=[${deps.join(', ')}]`);
         if (deps.length) {
             trgDev(debug, `  [${idx}] ${a.type} waiting for: [${deps.join(', ')}]`);
             await Promise.all(deps.map(d => varReady.get(d).promise));
+            console.debug(`[TRG:exec] action[${idx}] ${a.type} unblocked | ${deps.map(d => `${d}=${JSON.stringify((vars[d] ?? '').toString().slice(0, 40))}`).join(' ')}`);
             trgDev(debug, `  [${idx}] ${a.type} unblocked | vars:`, { ...vars });
         }
 

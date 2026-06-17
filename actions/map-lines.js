@@ -45,17 +45,18 @@ export function resolveMapLines(template, vars) {
             const sep    = _parseSep(parts[0].trim());
             const source = parts.slice(1).join(' : ').trim();
             const data   = _resolveSource(source, vars);
+            console.debug(`[TRG:mapLines] source="${source}" rows=${data ? data.split('\n').filter(Boolean).length : 0} empty=${!data.trim()} sample=${JSON.stringify(data.slice(0, 80))}`);
             if (!data.trim()) return '';
 
             const tplBody = body.trim();
-            return data.split('\n')
-                .map(line => line.trim())
-                .filter(Boolean)
-                .map(line => {
-                    const cols = line.split(sep);
-                    return tplBody.replace(/\{\{\.(\d+)\}\}/g, (_, i) => cols[parseInt(i, 10) - 1] ?? '');
-                })
-                .join('\n');
+            const lines = data.split('\n').map(line => line.trim()).filter(Boolean);
+            const expanded = lines.map(line => {
+                const cols = line.split(sep);
+                const out  = tplBody.replace(/\{\{\.(\d+)\}\}/g, (_, i) => cols[parseInt(i, 10) - 1] ?? '');
+                return out;
+            });
+            console.debug(`[TRG:mapLines] expanded[0]=${JSON.stringify(expanded[0])} total=${expanded.length}`);
+            return expanded.join('\n');
         },
     );
 }

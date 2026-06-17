@@ -1,10 +1,10 @@
 {
   "name": "Context Visualizer Dashboard",
-  "note": "Shows one badge per prompt slot with a colon bar chart of its character count. Each colon = ~1000 chars (~250 tokens). Click any badge to refresh.",
+  "note": "Shows one badge per prompt slot with a bar chart of its character count. Each colon = ~1000 chars (~250 tokens). Click any badge to refresh.",
   "rules": [
     {
       "name": "Context Visualizer Dashboard",
-      "note": "Step 1 — snapshot the context stack as tab-separated rows (identifier, char count). Step 2 — map each row into a labelled bar and split the result into per-slot badges.",
+      "note": "Step 1 — snapshot non-history slots as TSV rows. Step 2 — find the longest label so all bars align. Step 3 — render each slot as a padded bar, then append a summed Chat History row.",
       "when": "any",
       "triggers": [
         {
@@ -13,7 +13,8 @@
         },
         {
           "type": "badge",
-          "style": "top",
+          "style": "bottom",
+          "graph": true,
           "label": "{{layer_bars}}",
           "split-on": "\\n",
           "color": "#6688cc"
@@ -23,14 +24,20 @@
         {
           "type": "compose",
           "var": "ps_rows",
-          "template": "{{psRows}}",
-          "note": "Produces lines like: CNZ RAG<TAB>51200 — display name from preset, char count from content"
+          "template": "{{psRows:[!chatHistory*,!newMainChat]}}",
+          "note": "Produces lines like: CNZ RAG<TAB>51200 — display name from preset, char count. Excludes chatHistory-N turns and the legacy newMainChat slot."
+        },
+        {
+          "type": "compose",
+          "var": "name_pad",
+          "template": "{{psMaxNameLen:[!chatHistory*,!newMainChat]}}",
+          "note": "Length of the longest slot display name (excluding history). Used to align bar chart columns."
         },
         {
           "type": "compose",
           "var": "layer_bars",
-          "template": "{{mapLines: \\t : ps_rows}}\n{{.1}} {{bar: {{.2}} : 1000 : 20}}\n{{/mapLines}}",
-          "note": "Each line becomes one badge: 'CNZ RAG ::::::::::::.' — each colon is ~1000 chars, dot = >20% of a bucket"
+          "template": "{{mapLines: \\t : ps_rows}}\n{{pad:{{name_pad}}:{{.1}}}} {{bar: {{.2}} : 1000 : 40}}\n{{/mapLines}}\n{{pad:{{name_pad}}:Chat History}} {{bar: {{psCharSum:[chatHistory*,newMainChat]}} : 1000 : 40}}",
+          "note": "Each line becomes one badge chip. Labels padded to name_pad chars so bars align. Each colon ~1000 chars (~250 tokens). Max 40 colons covers ~10k tokens before overflow. Chat History aggregates all chatHistory-N turns plus the legacy newMainChat slot."
         }
       ]
     }
