@@ -56,7 +56,7 @@ export const compose = {
     <textarea class="text_pole trg-cfg trg-cv-template" rows="3"
         placeholder="{{if keyword matches &quot;breath|hitch&quot;}}Forced Physical Reaction Cliché&#10;{{/if}}{{if keyword is &quot;stone&quot;}}Purple Prose Metaphor&#10;{{/if}}">${esc(config.template ?? '')}</textarea>
 <div class="trg-kw-footer">
-    <span class="trg-help-toggle" title="Template language quick reference">?</span>
+    <span class="trg-help-toggle" title="Variables and functions cheatsheet">?</span>
 </div>
 <div class="trg-help-text" style="display:none;">
     <b>{{varName}}</b> — insert variable &nbsp;&nbsp; <b>{{if condition}}…{{/if}}</b> — conditional block<br>

@@ -65,7 +65,7 @@ export async function addSettingsPanel() {
     <button id="trg_add_ruleset" class="menu_button"><i class="fa-solid fa-plus"></i> Add group</button>
     <div class="inline-drawer trg-ref-drawer">
     <div class="inline-drawer-toggle inline-drawer-header">
-        <b>Template Language</b>
+        <b>Variables and functions cheatsheet</b>
         <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
     </div>
     <div class="inline-drawer-content">
