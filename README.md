@@ -186,11 +186,14 @@ See the [User Guide](docs/user-guide.md) for a full reference on triggers, actio
 
 ## Generate rules with an LLM
 
-The fastest way to build a ruleset is to describe what you want to a language model and let it write the JSON.
+Describe what you want; let an LLM write the JSON.
 
-1. Open [docs/trg_save_format.md](docs/trg_save_format.md) and copy the entire file.
-2. Paste it into your LLM of choice as context.
-3. Describe the rule you want in plain language — what should trigger it, what should happen, what variables it should produce or consume.
-4. The LLM writes a valid JSON ruleset. Copy it, save it as a `.json` file, and import it via the **Import** button in the profile bar.
+1. Add [docs/trg_save_format.md](docs/trg_save_format.md) and [docs/triggers.schema.json](docs/triggers.schema.json) to context.
+2. Describe the rule — what triggers it, what it does, what variables it reads or writes.
+3. Import the output via **Import** in the profile bar.
 
-The save format doc contains the complete schema, every trigger and action type with all their fields, template variable reference, and working examples. It is written to be consumed by an LLM: type keys match what the UI shows, fields are flat and readable, and `note` fields on every object give the model space to record intent alongside config. Comments in the JSON are stripped on import, so the LLM can annotate freely.
+The save format doc covers every trigger and action type with working examples. The schema gives the model a machine-readable contract to validate output against. `note` fields on any object are free annotation space; JSON comments are stripped on import.
+
+---
+
+**Schema:** [docs/triggers.schema.json](docs/triggers.schema.json)
