@@ -37,6 +37,7 @@ import { slashCmd }           from './slash-cmd.js';
 import { update }             from './update.js';
 import { imageGen }           from './image-gen.js';
 import { setStVar }           from './set-stvar.js';
+import { domEvent }           from './domEvent.js';
 
 export const ACTION_REGISTRY = {
     stop,
@@ -47,6 +48,7 @@ export const ACTION_REGISTRY = {
     update,
     imageGen,
     setStVar,
+    domEvent,
 };
 
 /**

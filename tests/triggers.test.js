@@ -31,12 +31,14 @@ import { TRIGGER_REGISTRY }                                from '../triggers.js'
 import { setTurnVar, getTurnVar, clearTurnVars, getTurnVarsSnapshot } from '../triggers/turn-vars.js';
 import { clearWiCache, getLbEntryByName, resolveLbQueryTokens }       from '../triggers/lb-query.js';
 import { setCurrentEvent, clearCurrentEvent }               from '../triggers/event.js';
+import { setCurrentDomEvent, clearCurrentDomEvent }         from '../triggers/domEvent.js';
 // Import from 5-up so vi.mocked() controls the same instance lb-query.js and keyword.js use.
 import { getSortedEntries, loadWorldInfo, parseRegexFromString } from '../../../../../scripts/world-info.js';
 import { getLocalVariable as getLocalVar5up }        from '../../../../../scripts/variables.js';
 
 beforeEach(() => {
     clearTurnVars();
+    clearCurrentDomEvent();
     clearWiCache();
     clearCurrentEvent();
     vi.clearAllMocks();
@@ -568,5 +570,52 @@ describe('TRIGGER_REGISTRY.badge', () => {
         expect(cfg.keywords).toBe('');
         expect(cfg.caseSensitive).toBe(false);
         expect(cfg.clickAction).toBe('fire');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// TRIGGER_REGISTRY.domEvent
+// ---------------------------------------------------------------------------
+
+describe('TRIGGER_REGISTRY.domEvent', () => {
+    const de = TRIGGER_REGISTRY.domEvent;
+
+    afterEach(() => {
+        clearCurrentDomEvent();
+    });
+
+    it('test() returns null when no dom event is active', async () => {
+        expect(await de.test('', { eventName: 'plz:rmbg-done' })).toBeNull();
+    });
+
+    it('test() returns the event name when _currentDomEventName matches config.eventName', async () => {
+        setCurrentDomEvent('plz:rmbg-done', { uuid: 'abc', status: 'success' });
+        expect(await de.test('', { eventName: 'plz:rmbg-done' })).toBe('plz:rmbg-done');
+    });
+
+    it('test() returns null when _currentDomEventName does not match config.eventName', async () => {
+        setCurrentDomEvent('other:event', {});
+        expect(await de.test('', { eventName: 'plz:rmbg-done' })).toBeNull();
+    });
+
+    it('test() returns null when config.eventName is empty', async () => {
+        setCurrentDomEvent('plz:rmbg-done', {});
+        expect(await de.test('', { eventName: '' })).toBeNull();
+        expect(await de.test('', { eventName: '   ' })).toBeNull();
+    });
+
+    it('test() works with any custom event name, not just PLZ events', async () => {
+        setCurrentDomEvent('myapp:image-ready', { result: 'ok' });
+        expect(await de.test('', { eventName: 'myapp:image-ready' })).toBe('myapp:image-ready');
+    });
+
+    it('test() returns null after clearCurrentDomEvent is called', async () => {
+        setCurrentDomEvent('plz:rmbg-done', {});
+        clearCurrentDomEvent();
+        expect(await de.test('', { eventName: 'plz:rmbg-done' })).toBeNull();
+    });
+
+    it('defaultConfig has correct shape', () => {
+        expect(de.defaultConfig).toEqual({ eventName: 'plz:rmbg-done' });
     });
 });

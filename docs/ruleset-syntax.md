@@ -295,6 +295,18 @@ chance   number   0–100; default 50
 
 Combine with `when: "all"` to make any rule probabilistic.
 
+### `domEvent`
+
+Fires when a DOM `CustomEvent` with a matching name is dispatched on `document`. The matched event name becomes `{{keyword}}`.
+
+```
+eventName   string   required; e.g. "plz:rmbg-done"
+```
+
+When the trigger fires, the event's `detail` object is unpacked into turn variables automatically: each field `foo` in `detail` becomes `{{dom_event_foo}}`. `{{dom_event_name}}` is always set to the event name. For example, a `plz:rmbg-done` event with `detail: { uuid, status, path, error }` populates `{{dom_event_uuid}}`, `{{dom_event_status}}`, `{{dom_event_path}}`, and `{{dom_event_error}}`.
+
+Rules listening for a DOM event require the event listener to be registered. Triggeryze scans all enabled rules at startup and on chat change; newly added `domEvent` rules take effect without a page reload.
+
 ---
 
 ## Action types
@@ -401,6 +413,21 @@ scope   "chat" | "global"   default "chat"
 var     string               required
 key     string               optional; object key or array index — always a string (e.g. "0", not 0)
 value   string               required; supports {{vars}}
+```
+
+### `domEvent`
+
+**Stage: postMessage.** Dispatches a DOM `CustomEvent` on `document` with a JSON payload. All payload values support `{{vars}}` interpolation.
+
+```
+eventName   string   required; e.g. "plz:request-rmbg"
+payload     string   required; JSON string; supports {{vars}}; default "{}"
+```
+
+Example payload for triggering Personalyze background removal:
+
+```json
+{"image":"personalyze/{{keyword}}.png","dir":"exports","uuid":"{{dom_event_uuid}}"}
 ```
 
 ---

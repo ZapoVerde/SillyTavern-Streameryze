@@ -393,6 +393,16 @@ Adds a clickable button to an AI message. The badge does not fire during normal 
 
 **Inline badge lifecycle.** Inline spans exist only on the current turn's message. At the start of each new generation, all spans are stripped from all messages. Badges are injected once when the response finishes; during streaming they are applied progressively. Historical messages do not carry inline badges.
 
+### DOM event
+
+Fires when another extension (or any JavaScript on the page) dispatches a `CustomEvent` on `document` with a matching name. The event name becomes `{{keyword}}`.
+
+**Event name** — the name to listen for. Triggeryze registers the listener automatically when the rule is saved.
+
+When the trigger fires, every field in the event's `detail` object is copied into turn variables as `{{dom_event_<field>}}`. `{{dom_event_name}}` is always the event name. For the `plz:rmbg-done` event from Personalyze, this means `{{dom_event_uuid}}`, `{{dom_event_status}}`, `{{dom_event_path}}`, and `{{dom_event_error}}` are available to all downstream actions.
+
+**Common use: react to a Personalyze image job.** Set event name to `plz:rmbg-done`. Add a condition trigger (AND) checking `dom_event_status is "success"` to limit the rule to successful completions. In actions, use `{{dom_event_path}}` to reference the generated image.
+
 ### Combining triggers
 
 When a rule has multiple triggers, the **any / all** selector at the top of the WHEN section controls how they combine:
@@ -546,6 +556,18 @@ Edits the message text directly. Choose an output mode:
 **Save as** — stores the written text, for use by later actions.
 
 **Note on conflicts:** if two update (text) actions in the same rule, or two separate rules, write to the same slot — same mode and keyword, or same lorebook entry title — the later one overwrites the first. A clobbering warning appears in amber at the bottom of the rule card when this is detected. The warning is informational; you can resolve it by combining both into a single action or by using distinct target slots.
+
+### Dispatch DOM event
+
+**Stage: postMessage**
+
+Dispatches a `CustomEvent` on `document` with a configurable name and JSON payload. Other extensions (or other Triggeryze rules with a DOM event trigger) can listen for and react to the event.
+
+**Event name** — the name to dispatch. Convention: use a namespaced `extension:event` format (e.g. `plz:request-rmbg`) to avoid conflicts.
+
+**Payload** — a JSON string. All values support `{{vars}}` interpolation. The parsed object is attached as the event's `detail`. If the JSON is malformed after interpolation, the raw string is wrapped in `{ raw: "..." }` so the event still fires.
+
+**Common use: trigger a Personalyze image job from a rule.** Set event name to `plz:request-rmbg`. Set payload to `{"image":"personalyze/{{keyword}}.png","dir":"exports","uuid":"{{dom_event_uuid}}"}`. A separate rule with a DOM event trigger on `plz:rmbg-done` can then react when the job completes.
 
 ---
 
