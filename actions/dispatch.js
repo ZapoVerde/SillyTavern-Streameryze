@@ -125,6 +125,7 @@ export function prefetchSideCall(key, config, matchedKeyword, streamText, stCtx,
         'up-to':   upTo,
         char:      name2 ?? '',
         user:      name1 ?? '',
+        'chat_id': stCtx?.chatId ?? '',
     });
     if (!mkPrompt().trim()) return;
 

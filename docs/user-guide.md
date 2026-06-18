@@ -570,6 +570,7 @@ Available in every template field, in every action:
 | `{{history:[2]:speaker}}` | Last 2 messages from the speaker named by turn variable `speaker`; glob patterns work here too |
 | `{{char}}` | Character name |
 | `{{user}}` | User name |
+| `{{chat_id}}` | Current chat file name without extension — stable per-chat identifier, useful for scoping lorebooks to a specific chat |
 | `{{highlighted}}` | Text selected in the browser when a badge button was clicked; empty string for all other trigger types |
 | `{{lbTitles:...}}` | Comma-separated list of lorebook entry titles — see [Lorebook query tokens](#lorebook-lookup-in-templates) |
 | `{{lbKeys:...}}` | Comma-separated list of lorebook trigger keys — same syntax |
@@ -665,6 +666,7 @@ String transforms run after all `{{varName}}` substitution and math evaluation. 
 | `{{join: delim: val}}` | Join non-empty lines with delimiter |
 | `{{replace: find: with: val}}` | Replace all occurrences of `find` with `with` (literal) |
 | `{{default: fallback: val}}` | Return `val` if non-empty after trim, otherwise `fallback` |
+| `{{pick: N: val}}` | Pick N random non-empty lines from `val`, newline-joined |
 
 `val` is typically a resolved variable reference. Inner `{{varName}}` tokens are substituted before the transform runs:
 
@@ -680,6 +682,7 @@ String transforms run after all `{{varName}}` substitution and math evaluation. 
 {{join: , : {{opts}}}}                      collapse multi-line output to comma-separated
 {{replace: [Char]: {{char}}: {{summary}}}}  swap a placeholder for the actual character name
 {{default: nothing yet: {{summary}}}}       fall back to "nothing yet" if summary is unset
+{{pick: 4: {{titles}}}}                     four randomly chosen lines from the titles variable
 ```
 
 **Transforms and badge splitting.** When using a bottom badge with `split-on: \n` to render one badge per line of LLM output, wrap the label in `{{trim:}}` to prevent empty badges from trailing blank lines the model may have added:
@@ -692,6 +695,37 @@ split-on: \n
 **`{{join:}}` delimiter.** One optional leading space after `join:` is consumed as visual padding — the rest is the literal delimiter. To join with `, ` write `{{join: , : val}}`; to join with a single space write `{{join:  : val}}` (two spaces, one consumed).
 
 **`{{replace:}}` and `{{default:}}` note.** The `find`, `with`, and `fallback` arguments may not contain a colon — the first `:` after each argument keyword is the separator. Empty `find` is a no-op.
+
+---
+
+### Math expressions
+
+`{{math: expr}}` evaluates arithmetic after all `{{varName}}` substitution. Two random-number functions are available inside math expressions:
+
+| Function | Returns |
+|---|---|
+| `rand()` | A random float in [0, 1) |
+| `randint(N, M)` | A random integer in [N, M] inclusive |
+
+```
+{{math: randint(1, 20)}}                          d20 roll
+{{math: randint(1, 6) + randint(1, 6)}}           2d6
+{{math: randint(1, 6) + randint(1, 6) + 3}}       2d6+3
+{{math: {{chatvar::hp}} - randint(1, 8)}}         subtract a random damage roll from hp
+{{math: rand() * 100}}                            random percentage
+```
+
+---
+
+### Unique IDs
+
+`{{uuid}}` generates a fresh v4 UUID on every call. Since each call produces a different value, store it once with a compose action, then reference the variable everywhere that needs the same ID:
+
+```
+compose "char_id" → {{uuid}}
+update lorebook: title = "{{keyword}}", content = "id: {{char_id}}"
+update lorebook: title = "{{keyword}}_sword", content = "owner_id: {{char_id}}"
+```
 
 ---
 
@@ -731,6 +765,7 @@ All five positions are optional. Omit trailing positions or leave one empty (ski
 | `all` | All matches, comma-separated (default for `lbTitles`, `lbKeys`, `lbBooks`) |
 | `first` | Only the first match (default for `lbContent`) |
 | `last` | Only the last match |
+| `rnd` | One randomly chosen match |
 
 **Argument 5 — scope:** Which lorebooks to consider.
 
@@ -750,6 +785,8 @@ All five positions are optional. Omit trailing positions or leave one empty (ski
 {{lbContent:[Creatures]:[dragon]::first}}         — body of the first entry titled "dragon"
 {{lbTitles:::dragon*}}                            — titles of entries with a key starting with "dragon"
 {{lbTitles:[MyLB]:::all}}                         — all titles from MyLB (explicit all)
+{{lbContent::::rnd}}                              — one randomly chosen entry's content
+{{lbTitles::::rnd}}                               — one randomly chosen entry title
 {{lbBooks}}                                       — names of all active lorebooks
 {{lbBooks:::[love]}}                              — which lorebooks have an entry with key "love"
 {{lbBooks::[Elara]}}                              — which lorebooks have an entry titled "Elara"

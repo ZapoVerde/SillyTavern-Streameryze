@@ -36,9 +36,9 @@ export function renderVarLegend(priorActions, crossRuleVars) {
         { n: 'highlighted', h: 'text selected when a badge button was clicked' },
     ];
     const lb = [
-        { n: 'lbContent:[lbName]:[lbTitle]:[lbTag]:[Mode(first, last, all)]:[Scope(active, inactive, all)]',
-          d: '{{lbContent:[lbName<b>*</b>]:[lbTitle<b>*</b>]:[lbTag<b>*</b>]:[Mode(first, last, <b>all</b>)]:[Scope(<b>active</b>, inactive, all)]}}',
-          h: 'lorebook entry content — filter by book/title/tag, mode: first|last|all, scope: active|inactive|all' },
+        { n: 'lbContent:[lbName]:[lbTitle]:[lbTag]:[Mode(first, last, rnd, all)]:[Scope(active, inactive, all)]',
+          d: '{{lbContent:[lbName<b>*</b>]:[lbTitle<b>*</b>]:[lbTag<b>*</b>]:[Mode(first, last, rnd, <b>all</b>)]:[Scope(<b>active</b>, inactive, all)]}}',
+          h: 'lorebook entry content — filter by book/title/tag, mode: first|last|rnd|all, scope: active|inactive|all' },
     ];
     const ps = [
         { n: 'psName:[Preset_Name]:[mode(first, last, all)]',

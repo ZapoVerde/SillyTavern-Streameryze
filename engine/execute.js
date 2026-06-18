@@ -53,7 +53,7 @@ export async function executeActions(rule, stage, execCtx, getGenId) {
 
     const capturedGenId       = getGenId();
     const isCurrentGeneration = () => getGenId() === capturedGenId;
-    const vars  = { ...getTurnVarsSnapshot(), highlighted: execCtx.highlighted ?? '' };
+    const vars  = { ...getTurnVarsSnapshot(), highlighted: execCtx.highlighted ?? '', 'chat_id': execCtx.stCtx?.chatId ?? '' };
     const debug = rule.devMode ?? false;
 
     trgDev(debug, `── rule "${rule.name ?? rule.id}" | ${stage} | keyword="${execCtx.matchedKeyword}" ──`);
@@ -138,7 +138,7 @@ export async function applyEarlyActions(text, streamingMessageId, stCtx, getGenI
         const capturedGenId       = getGenId();
         const isCurrentGeneration = () => getGenId() === capturedGenId;
         const debug = rule.devMode ?? false;
-        const vars  = {};
+        const vars  = { 'chat_id': stCtx?.chatId ?? '' };
 
         for (const { a, idx } of tieredCandidates) {
             const def  = ACTION_REGISTRY[a.type];

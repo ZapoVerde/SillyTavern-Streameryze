@@ -26,6 +26,14 @@ import { TRIGGER_REGISTRY }                                                from 
 import { ACTION_REGISTRY, makeActionCtx }                                  from '../actions/index.js';
 import { reinjectRuleBadges }                                              from '../engine.js';
 
+function randomBadgeColor() {
+    const h = Math.floor(Math.random() * 360);
+    const s = 55 + Math.floor(Math.random() * 20);
+    const l = 55 + Math.floor(Math.random() * 15);
+    const f = (n) => { const k = (n + h / 30) % 12; const a = s / 100 * Math.min(l / 100, 1 - l / 100); return Math.round((l / 100 - a * Math.max(-1, Math.min(k - 3, Math.min(9 - k, 1)))) * 255); };
+    return `#${f(0).toString(16).padStart(2,'0')}${f(8).toString(16).padStart(2,'0')}${f(4).toString(16).padStart(2,'0')}`;
+}
+
 function downloadJson(filename, data) {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url  = URL.createObjectURL(blob);
@@ -125,7 +133,7 @@ function summarizeIngredient(item) {
     return '';
 }
 
-function renderIngredient(item, registry, onConfigChange, onDelete, ctx = null, ingredientKey = null) {
+function renderIngredient(item, registry, onConfigChange, onDelete, ctx = null, ingredientKey = null, onMoveUp = undefined, onMoveDown = undefined) {
     const def         = registry[item.type];
     const label       = def?.label ?? item.type;
     const summary     = summarizeIngredient(item);
@@ -140,6 +148,16 @@ function renderIngredient(item, registry, onConfigChange, onDelete, ctx = null, 
     <span class="trg-ingredient-summary">${summary}</span>
     <button class="trg-btn-icon trg-ingredient-delete" title="Remove">✕</button>
 </div>`);
+
+    if (onMoveUp !== undefined || onMoveDown !== undefined) {
+        const $up   = $('<button class="trg-btn-icon trg-action-move" title="Move up"><i class="fa-solid fa-arrow-up"></i></button>');
+        const $down = $('<button class="trg-btn-icon trg-action-move" title="Move down"><i class="fa-solid fa-arrow-down"></i></button>');
+        if (!onMoveUp)   $up.prop('disabled', true);
+        if (!onMoveDown) $down.prop('disabled', true);
+        if (onMoveUp)   $up.on('click',   e => { e.stopPropagation(); onMoveUp(); });
+        if (onMoveDown) $down.on('click', e => { e.stopPropagation(); onMoveDown(); });
+        $hdr.find('.trg-ingredient-delete').before($up, $down);
+    }
 
     const $body   = $('<div class="trg-ingredient-body">');
     const $config = $('<div class="trg-ingredient-config">');
@@ -352,7 +370,9 @@ function renderRuleCard(rule, ruleIdx, rsRules, allRules, save, rulesetId) {
     });
     $when.append($triggers);
     $when.append(renderAddButton('+ trigger', TRIGGER_REGISTRY, (type) => {
-        rule.triggers.push({ type, config: structuredClone(TRIGGER_REGISTRY[type].defaultConfig) });
+        const config = structuredClone(TRIGGER_REGISTRY[type].defaultConfig);
+        if (type === 'badgeTrigger') config.color = randomBadgeColor();
+        rule.triggers.push({ type, config });
         _expandedIngredients.add(`${rule.id}:t:${rule.triggers.length - 1}`);
         rebuild();
     }));
@@ -363,13 +383,17 @@ function renderRuleCard(rule, ruleIdx, rsRules, allRules, save, rulesetId) {
 
     const $actions = $('<div class="trg-ingredient-list">');
     (rule.actions ?? []).forEach((action, aidx) => {
+        const isFirst = aidx === 0;
+        const isLast  = aidx === rule.actions.length - 1;
         const $row = renderIngredient(
             action,
             ACTION_REGISTRY,
             (newConfig) => { rule.actions[aidx].config = newConfig; save(); },
             () => { rule.actions.splice(aidx, 1); rebuild(); },
             makeActionCtx(rule, aidx, allRules),
-            `${rule.id}:a:${aidx}`
+            `${rule.id}:a:${aidx}`,
+            isFirst ? null : () => { const [a] = rule.actions.splice(aidx, 1); rule.actions.splice(aidx - 1, 0, a); rebuild(); },
+            isLast  ? null : () => { const [a] = rule.actions.splice(aidx, 1); rule.actions.splice(aidx + 1, 0, a); rebuild(); },
         );
         $row.on('focusout', '.trg-outvar-field', () => rebuild());
         $actions.append($row);

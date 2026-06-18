@@ -1,4 +1,5 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { randomUUID } from 'node:crypto';
 
 // Hoisted mock state for prompt-slot (ps) token tests.
 // vi.hoisted ensures these arrays exist before any vi.mock factory runs.
@@ -698,6 +699,62 @@ describe('{{psCharSum}} — aggregate character count', () => {
     it('can be used inline alongside other text', async () => {
         const result = await resolveLbTokens('total: {{psCharSum:[chatHistory*]}} chars', '', '', {}, PS_MES_ID);
         expect(result).toBe('total: 6 chars');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// interpolate — {{uuid}}
+// ---------------------------------------------------------------------------
+
+describe('interpolate — {{uuid}}', () => {
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+    beforeEach(() => { vi.stubGlobal('crypto', { randomUUID }); });
+    afterEach(() => { vi.unstubAllGlobals(); });
+
+    it('produces a valid v4 UUID', () => {
+        expect(interpolate('{{uuid}}', {})).toMatch(UUID_RE);
+    });
+
+    it('produces a different UUID on each call', () => {
+        const a = interpolate('{{uuid}}', {});
+        const b = interpolate('{{uuid}}', {});
+        expect(a).not.toBe(b);
+    });
+
+    it('two {{uuid}} tokens in one template produce different values', () => {
+        const result = interpolate('{{uuid}} {{uuid}}', {});
+        const [a, b] = result.split(' ');
+        expect(a).toMatch(UUID_RE);
+        expect(b).toMatch(UUID_RE);
+        expect(a).not.toBe(b);
+    });
+
+    it('works alongside other variables', () => {
+        const result = interpolate('id={{uuid}} name={{name}}', { name: 'Alice' });
+        const [idPart, namePart] = result.split(' ');
+        expect(idPart.replace('id=', '')).toMatch(UUID_RE);
+        expect(namePart).toBe('name=Alice');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// interpolate — {{chat_id}}
+// ---------------------------------------------------------------------------
+
+describe('interpolate — {{chat_id}}', () => {
+    it('resolves {{chat_id}} from vars', () => {
+        expect(interpolate('{{chat_id}}', { 'chat_id': 'Aria - 2024-01-15@12-00-00' }))
+            .toBe('Aria - 2024-01-15@12-00-00');
+    });
+
+    it('resolves {{chat_id}} from ruleVars when absent from vars', () => {
+        expect(interpolate('{{chat_id}}', {}, { 'chat_id': 'from-rule' }))
+            .toBe('from-rule');
+    });
+
+    it('returns empty string when chat_id is not provided', () => {
+        expect(interpolate('{{chat_id}}', {})).toBe('');
     });
 });
 

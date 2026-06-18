@@ -237,23 +237,27 @@ export async function resolveLbQueryTokens(template, vars = {}) {
             const m2 = mode ?? 'all';
             replacement = m2 === 'first' ? (titles[0] ?? '')
                         : m2 === 'last'  ? (titles[titles.length - 1] ?? '')
+                        : m2 === 'rnd'   ? (titles[Math.floor(Math.random() * titles.length)] ?? '')
                         : titles.join(', ');
         } else if (type === 'lbKeys') {
             const keys = [...new Set(entries.flatMap(e => Array.isArray(e.key) ? e.key : []).filter(Boolean))];
             const m2 = mode ?? 'all';
             replacement = m2 === 'first' ? (keys[0] ?? '')
                         : m2 === 'last'  ? (keys[keys.length - 1] ?? '')
+                        : m2 === 'rnd'   ? (keys[Math.floor(Math.random() * keys.length)] ?? '')
                         : keys.join(', ');
         } else if (type === 'lbBooks') {
             const books = [...new Set(entries.map(e => e.world).filter(Boolean))];
             const m2 = mode ?? 'all';
             replacement = m2 === 'first' ? (books[0] ?? '')
                         : m2 === 'last'  ? (books[books.length - 1] ?? '')
+                        : m2 === 'rnd'   ? (books[Math.floor(Math.random() * books.length)] ?? '')
                         : books.join(', ');
         } else {
             const m2 = mode ?? 'first';
             if (m2 === 'first')      replacement = entries[0]?.content ?? '';
             else if (m2 === 'last')  replacement = entries[entries.length - 1]?.content ?? '';
+            else if (m2 === 'rnd')   replacement = entries[Math.floor(Math.random() * entries.length)]?.content ?? '';
             else                     replacement = entries.map(e => e.content).filter(Boolean).join('\n\n');
         }
 

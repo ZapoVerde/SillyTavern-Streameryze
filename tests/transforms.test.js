@@ -458,14 +458,66 @@ describe('resolveTransforms — {{bar:}}', () => {
 });
 
 // ---------------------------------------------------------------------------
+// resolveTransforms — {{pick: N:}}
+// ---------------------------------------------------------------------------
+
+describe('resolveTransforms — {{pick: N:}}', () => {
+    it('returns exactly N non-empty lines', () => {
+        const result = resolveTransforms('{{pick: 2: a\nb\nc\nd}}');
+        expect(result.split('\n')).toHaveLength(2);
+    });
+
+    it('all returned lines come from the original set', () => {
+        const result = resolveTransforms('{{pick: 2: a\nb\nc}}');
+        for (const line of result.split('\n')) expect(['a', 'b', 'c']).toContain(line);
+    });
+
+    it('returns all lines when N exceeds line count, sorted for determinism', () => {
+        const result = resolveTransforms('{{pick: 10: a\nb\nc}}');
+        expect(result.split('\n').sort()).toEqual(['a', 'b', 'c']);
+    });
+
+    it('returns the single line when only one line exists', () => {
+        expect(resolveTransforms('{{pick: 1: only}}')).toBe('only');
+    });
+
+    it('returns empty string when value is empty', () => {
+        expect(resolveTransforms('{{pick: 3:}}')).toBe('');
+    });
+
+    it('filters blank lines before picking', () => {
+        const result = resolveTransforms('{{pick: 2: a\n\nb\n\nc}}');
+        const lines = result.split('\n');
+        expect(lines).toHaveLength(2);
+        for (const line of lines) expect(['a', 'b', 'c']).toContain(line);
+    });
+
+    it('filters whitespace-only lines', () => {
+        const result = resolveTransforms('{{pick: 1: a\n   \nb}}');
+        expect(['a', 'b']).toContain(result);
+    });
+
+    it('clamps N=0 to 1', () => {
+        const result = resolveTransforms('{{pick: 0: a\nb\nc}}');
+        expect(result.split('\n')).toHaveLength(1);
+        expect(['a', 'b', 'c']).toContain(result);
+    });
+
+    it('resolves through interpolate() after variable substitution', () => {
+        const result = interpolate('{{pick: 1: {{opts}}}}', { opts: 'x\ny\nz' });
+        expect(['x', 'y', 'z']).toContain(result);
+    });
+});
+
+// ---------------------------------------------------------------------------
 // TRANSFORM_PREFIXES — deferred-token registry
 // ---------------------------------------------------------------------------
 
 describe('TRANSFORM_PREFIXES', () => {
-    it('includes all fourteen transform names', () => {
+    it('includes all sixteen transform names', () => {
         const required = [
             'trim:', 'upper:', 'lower:', 'lines:', 'words:', 'default:',
-            'chars:', 'last:', 'nth:', 'cap:', 'len:', 'join:', 'replace:', 'bar:',
+            'chars:', 'last:', 'nth:', 'cap:', 'len:', 'join:', 'replace:', 'bar:', 'pad:', 'pick:',
         ];
         for (const p of required) {
             expect(TRANSFORM_PREFIXES).toContain(p);

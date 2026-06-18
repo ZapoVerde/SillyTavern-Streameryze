@@ -56,6 +56,27 @@ function hexToRgba(hex, alpha) {
     return `rgba(${r},${g},${b},${alpha})`;
 }
 
+/** Return a text-safe version of hex with lightness clamped to [floor, ceil] in HSL. */
+function clampTextColor(hex, floor = 60, ceil = 88) {
+    const r = parseInt(hex.slice(1, 3), 16) / 255;
+    const g = parseInt(hex.slice(3, 5), 16) / 255;
+    const b = parseInt(hex.slice(5, 7), 16) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const l = (max + min) / 2;
+    let s = 0, h = 0;
+    if (max !== min) {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch (max) {
+            case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+            case g: h = ((b - r) / d + 2) / 6; break;
+            case b: h = ((r - g) / d + 4) / 6; break;
+        }
+    }
+    const clamped = Math.min(ceil, Math.max(floor, Math.round(l * 100)));
+    return `hsl(${Math.round(h * 360)},${Math.round(s * 100)}%,${clamped}%)`;
+}
+
 /** Replace {{varName}} tokens with current turn variable values (Principle 15). */
 function expandVars(str, snapshot) {
     return String(str ?? '').replace(/\{\{([^{}]+)\}\}/g, (_, k) => {
@@ -107,13 +128,13 @@ export function setBadge(messageId, state) {
 
 // ─── Rule badge buttons (top & bottom) ───────────────────────────────────────
 
-function makeRuleBadgeButton(ruleId, messageId, label, color, clickAction) {
-    return $(`<button class="trg-rule-badge"
+function makeRuleBadgeButton(ruleId, messageId, label, color, clickAction, compact) {
+    return $(`<button class="trg-rule-badge${compact ? ' trg-compact' : ''}"
         data-rule-id="${esc(ruleId)}"
         data-mesid="${messageId}"
         data-click-action="${esc(clickAction || 'fire')}"
         data-payload="${esc(label)}"
-        style="background:${hexToRgba(color, .15)};border-color:${hexToRgba(color, .45)};color:${color}"
+        style="background:${hexToRgba(color, .15)};border-color:${hexToRgba(color, .45)};color:${clampTextColor(color)}"
         title="${esc(label)}">${esc(label)}</button>`);
 }
 
@@ -155,7 +176,7 @@ export function renderRuleBadges(messageId, defs) {
 
         const bucket = def.style === 'bottom' ? btmItems : topItems;
         for (const label of labels) {
-            bucket.push({ ruleId: def.ruleId, label, color, clickAction, graph: def.graph === true });
+            bucket.push({ ruleId: def.ruleId, label, color, clickAction, graph: def.graph === true, compact: def.compact === true });
         }
     }
 
@@ -164,7 +185,7 @@ export function renderRuleBadges(messageId, defs) {
         if ($chName.length) {
             let $ref = $mes.find('.trg-badge').length ? $mes.find('.trg-badge') : $chName;
             for (const item of topItems) {
-                const $btn = makeRuleBadgeButton(item.ruleId, messageId, item.label, item.color, item.clickAction);
+                const $btn = makeRuleBadgeButton(item.ruleId, messageId, item.label, item.color, item.clickAction, item.compact);
                 if (item.graph) $btn.addClass('trg-graph');
                 $ref.after($btn);
                 $ref = $btn;
@@ -176,10 +197,10 @@ export function renderRuleBadges(messageId, defs) {
         const $mesText = $mes.find('.mes_text');
         if ($mesText.length) {
             const isGraph    = btmItems.some(i => i.graph);
-            const $container = $(`<div class="trg-bottom-badges${isGraph ? ' trg-graph' : ''}"></div>`);
-            $mesText.append($container);
+            const $container = $(`<div class="trg-bottom-badges${isGraph ? ' trg-graph' : ''}" aria-hidden="true"></div>`);
+            $mesText.after($container);
             for (const item of btmItems) {
-                $container.append(makeRuleBadgeButton(item.ruleId, messageId, item.label, item.color, item.clickAction));
+                $container.append(makeRuleBadgeButton(item.ruleId, messageId, item.label, item.color, item.clickAction, item.compact));
             }
         }
     }
@@ -264,7 +285,7 @@ function collectTextNodes(root) {
     const nodes = [];
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
         acceptNode(node) {
-            if (node.parentElement?.closest('pre, code, .trg-inline-badge')) {
+            if (node.parentElement?.closest('pre, code, .trg-inline-badge, .trg-bottom-badges')) {
                 return NodeFilter.FILTER_REJECT;
             }
             return NodeFilter.FILTER_ACCEPT;
@@ -326,12 +347,13 @@ function replaceTextNode(node, matches) {
         }
         const span = document.createElement('span');
         span.className           = 'trg-inline-badge';
+        span.setAttribute('aria-hidden', 'true');
         span.dataset.ruleId      = m.ruleId;
         span.dataset.kw          = m.matched;
         span.dataset.clickAction = m.clickAction || 'fire';
         span.dataset.payload     = m.matched;
         span.textContent         = m.badgeLabel ? m.badgeLabel.replace(/\{\{keyword\}\}/gi, m.matched) : m.matched;
-        span.style.cssText       = `background:${hexToRgba(m.color, .15)};border-color:${hexToRgba(m.color, .45)};color:${m.color}`;
+        span.style.cssText       = `background:${hexToRgba(m.color, .15)};border-color:${hexToRgba(m.color, .45)};color:${clampTextColor(m.color)}`;
         frag.appendChild(span);
         pos = m.end;
     }

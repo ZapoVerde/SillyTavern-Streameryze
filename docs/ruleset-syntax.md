@@ -422,6 +422,7 @@ Available in every `{{vars}}`-supporting field:
 {{history:[2]:speaker}}        last 2 messages from the speaker named by turn variable "speaker"; supports * wildcard
 {{char}}                       character name
 {{user}}                       user name
+{{chat_id}}                    current chat file name without extension — stable per-chat identifier
 {{highlighted}}                browser-selected text at badge click; empty for other triggers
 {{varName}}                    value of a turn variable named varName
 {{lbTitles:[lb]:[title]:[key]:[mode]:[scope]}}   comma-separated entry titles from lorebook query
@@ -433,12 +434,14 @@ Available in every `{{vars}}`-supporting field:
 {{psRows:[nameFilter]}}             TSV data source: one `identifier\tcharCount` line per matching slot
 {{chatvar::varName}}           ST chat variable
 {{globalvar::varName}}         ST global variable
-{{math: expr}}                 safe arithmetic after all substitution (e.g. {{math: {{hp}} + 10}})
+{{math: expr}}                 safe arithmetic after all substitution (e.g. {{math: {{hp}} + 10}}); supports rand() → float [0,1) and randint(N,M) → integer in [N,M]
 ```
 
-`lb` args: all optional (empty = wildcard). `mode`: `first | last | all` (default: `all` for titles/keys/books, `first` for content). `scope`: `active` (default) | `all` (every lorebook on disk) | `inactive`.
+`lb` args: all optional (empty = wildcard). `mode`: `first | last | rnd | all` (default: `all` for titles/keys/books, `first` for content; `rnd` picks one random item). `scope`: `active` (default) | `all` (every lorebook on disk) | `inactive`.
 
 `ps` args: `nameFilter` optional. Forms: `[identifier]` literal, `[Display Name]` literal, `glob*` pattern, bare turn-variable name. `mode`: `first | last | all`. Resolves postMessage only.
+
+`{{uuid}}` — generates a fresh v4 UUID on every call. Use a compose action to generate it once and store it, then reference the variable everywhere else that needs the same ID.
 
 Map blocks — project a template over every row of tab-separated data:
 
@@ -490,6 +493,7 @@ Run after all `{{varName}}` substitution and `{{math:}}`. Inner variable referen
 {{replace: find: with: val}} replace all occurrences of find with with (literal)
 {{default: fallback: val}}   val if non-empty after trim, otherwise fallback
 {{bar: value : bucketSize : max}}   colon bar chart — one ':' per full bucket, '.' if remainder > 20%, '+' on overflow
+{{pick: N: val}}             N random non-empty lines from val, newline-joined; if val has fewer than N lines, returns all
 ```
 
 ```

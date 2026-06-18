@@ -1,4 +1,4 @@
-import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 // lb-query.js lives in triggers/ and uses 5-up paths to reach ST scripts.
 vi.mock('../../../../../scripts/world-info.js', () => ({
@@ -516,6 +516,113 @@ describe('scope: inactive — only lorebooks not in active set', () => {
         const r = await resolveLbQueryTokens('{{lbKeys:::::inactive}}', {});
         expect(r).toContain('villain');
         expect(r).not.toContain('elara');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// rnd mode — all four token types
+// ---------------------------------------------------------------------------
+
+describe('rnd mode', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    describe('{{lbContent::::rnd}}', () => {
+        it('returns the entry at index 0 when Math.random returns 0', async () => {
+            vi.mocked(getSortedEntries).mockResolvedValue(ALL);
+            vi.spyOn(Math, 'random').mockReturnValue(0);
+            expect(await resolveLbQueryTokens('{{lbContent::::rnd}}', {})).toBe('Senior archivist.');
+        });
+
+        it('returns the entry at index 2 when Math.random returns 0.5', async () => {
+            vi.mocked(getSortedEntries).mockResolvedValue(ALL);
+            vi.spyOn(Math, 'random').mockReturnValue(0.5); // floor(0.5 * 4) = 2 → Dragon
+            expect(await resolveLbQueryTokens('{{lbContent::::rnd}}', {})).toBe('A fearsome beast.');
+        });
+
+        it('returns empty string when the pool is empty', async () => {
+            vi.mocked(getSortedEntries).mockResolvedValue(ALL);
+            expect(await resolveLbQueryTokens('{{lbContent:[Ghost]:::rnd}}', {})).toBe('');
+        });
+
+        it('can be scoped to a specific lorebook', async () => {
+            vi.mocked(getSortedEntries).mockResolvedValue(ALL);
+            vi.spyOn(Math, 'random').mockReturnValue(0);
+            // Characters lorebook has Elara (index 0) and Marcus (index 1)
+            expect(await resolveLbQueryTokens('{{lbContent:[Characters]:::rnd}}', {})).toBe('Senior archivist.');
+        });
+    });
+
+    describe('{{lbTitles::::rnd}}', () => {
+        it('returns a single title (not comma-separated)', async () => {
+            vi.mocked(getSortedEntries).mockResolvedValue(ALL);
+            const result = await resolveLbQueryTokens('{{lbTitles::::rnd}}', {});
+            expect(result).not.toContain(', ');
+            expect(['Elara', 'Marcus', 'Dragon', 'Magic']).toContain(result);
+        });
+
+        it('returns the title at index 0 when Math.random returns 0', async () => {
+            vi.mocked(getSortedEntries).mockResolvedValue(ALL);
+            vi.spyOn(Math, 'random').mockReturnValue(0);
+            expect(await resolveLbQueryTokens('{{lbTitles::::rnd}}', {})).toBe('Elara');
+        });
+
+        it('returns the last title when Math.random approaches 1', async () => {
+            vi.mocked(getSortedEntries).mockResolvedValue(ALL);
+            vi.spyOn(Math, 'random').mockReturnValue(0.99); // floor(0.99 * 4) = 3 → Magic
+            expect(await resolveLbQueryTokens('{{lbTitles::::rnd}}', {})).toBe('Magic');
+        });
+
+        it('returns empty string when the pool is empty', async () => {
+            vi.mocked(getSortedEntries).mockResolvedValue(ALL);
+            expect(await resolveLbQueryTokens('{{lbTitles:[Ghost]:::rnd}}', {})).toBe('');
+        });
+    });
+
+    describe('{{lbKeys::::rnd}}', () => {
+        it('returns a single key (not comma-separated)', async () => {
+            vi.mocked(getSortedEntries).mockResolvedValue(ALL);
+            const result = await resolveLbQueryTokens('{{lbKeys::::rnd}}', {});
+            expect(result).not.toContain(', ');
+        });
+
+        it('returns the key at index 0 when Math.random returns 0', async () => {
+            vi.mocked(getSortedEntries).mockResolvedValue(ALL);
+            vi.spyOn(Math, 'random').mockReturnValue(0); // index 0 of deduplicated keys → 'elara'
+            expect(await resolveLbQueryTokens('{{lbKeys::::rnd}}', {})).toBe('elara');
+        });
+
+        it('returns empty string when the pool is empty', async () => {
+            vi.mocked(getSortedEntries).mockResolvedValue(ALL);
+            expect(await resolveLbQueryTokens('{{lbKeys:[Ghost]:::rnd}}', {})).toBe('');
+        });
+    });
+
+    describe('{{lbBooks::::rnd}}', () => {
+        it('returns a single lorebook name (not comma-separated)', async () => {
+            vi.mocked(getSortedEntries).mockResolvedValue(ALL);
+            const result = await resolveLbQueryTokens('{{lbBooks::::rnd}}', {});
+            expect(result).not.toContain(', ');
+            expect(['Characters', 'Lore']).toContain(result);
+        });
+
+        it('returns "Characters" when Math.random returns 0', async () => {
+            vi.mocked(getSortedEntries).mockResolvedValue(ALL);
+            vi.spyOn(Math, 'random').mockReturnValue(0);
+            expect(await resolveLbQueryTokens('{{lbBooks::::rnd}}', {})).toBe('Characters');
+        });
+
+        it('returns "Lore" when Math.random returns 0.5', async () => {
+            vi.mocked(getSortedEntries).mockResolvedValue(ALL);
+            vi.spyOn(Math, 'random').mockReturnValue(0.5); // floor(0.5 * 2) = 1 → Lore
+            expect(await resolveLbQueryTokens('{{lbBooks::::rnd}}', {})).toBe('Lore');
+        });
+
+        it('returns empty string when the pool is empty', async () => {
+            vi.mocked(getSortedEntries).mockResolvedValue(ALL);
+            expect(await resolveLbQueryTokens('{{lbBooks:[Ghost]:::rnd}}', {})).toBe('');
+        });
     });
 });
 

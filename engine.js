@@ -71,6 +71,7 @@ function getRuleBadgeDefs(rules) {
                 color:       cfg.color || '#8888ff',
                 style:       legacy ? 'top' : (cfg.style || 'top'),
                 graph:       cfg.graph === true,
+                compact:     cfg.compact === true,
                 splitOn:     cfg.splitOn || '',
                 clickAction: cfg.clickAction || 'fire',
             };

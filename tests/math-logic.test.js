@@ -373,6 +373,81 @@ describe('{{if}} — combined operators', () => {
 // These exercise the full interpolate() pass sequence, not the evaluators alone.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// {{math:}} — rand() and randint(N, M)
+// ---------------------------------------------------------------------------
+
+describe('{{math:}} — randint(N, M)', () => {
+    afterEach(() => { vi.restoreAllMocks(); });
+
+    it('randint(1, 1) always returns the only possible value', () => {
+        expect(interpolate('{{math: randint(1, 1)}}', {})).toBe('1');
+    });
+
+    it('randint(6, 6) always returns 6', () => {
+        expect(interpolate('{{math: randint(6, 6)}}', {})).toBe('6');
+    });
+
+    it('returns the lowest value when Math.random is 0', () => {
+        vi.spyOn(Math, 'random').mockReturnValue(0); // floor(0 * 6) + 1 = 1
+        expect(interpolate('{{math: randint(1, 6)}}', {})).toBe('1');
+    });
+
+    it('returns the highest value when Math.random approaches 1', () => {
+        vi.spyOn(Math, 'random').mockReturnValue(0.99); // floor(0.99 * 6) + 1 = 6
+        expect(interpolate('{{math: randint(1, 6)}}', {})).toBe('6');
+    });
+
+    it('returns a mid-range value for Math.random = 0.5', () => {
+        vi.spyOn(Math, 'random').mockReturnValue(0.5); // floor(0.5 * 6) + 1 = 4
+        expect(interpolate('{{math: randint(1, 6)}}', {})).toBe('4');
+    });
+
+    it('works with negative bounds', () => {
+        vi.spyOn(Math, 'random').mockReturnValue(0); // floor(0 * 7) + (-3) = -3
+        expect(interpolate('{{math: randint(-3, 3)}}', {})).toBe('-3');
+    });
+
+    it('two randint calls in one expression are both substituted', () => {
+        vi.spyOn(Math, 'random').mockReturnValue(0); // both calls → 1; 1 + 1 = 2
+        expect(interpolate('{{math: randint(1, 6) + randint(1, 6)}}', {})).toBe('2');
+    });
+
+    it('composes with regular arithmetic', () => {
+        vi.spyOn(Math, 'random').mockReturnValue(0); // randint(1,8) → 1; 100 - 1 = 99
+        expect(interpolate('{{math: 100 - randint(1, 8)}}', {})).toBe('99');
+    });
+
+    it('returns empty string when lo > hi (invalid bounds)', () => {
+        expect(interpolate('{{math: randint(6, 1)}}', {})).toBe('');
+    });
+});
+
+describe('{{math:}} — rand()', () => {
+    afterEach(() => { vi.restoreAllMocks(); });
+
+    it('returns a float when Math.random returns a non-integer', () => {
+        vi.spyOn(Math, 'random').mockReturnValue(0.5);
+        expect(interpolate('{{math: rand()}}', {})).toBe('0.5');
+    });
+
+    it('returns 0 when Math.random returns 0', () => {
+        vi.spyOn(Math, 'random').mockReturnValue(0);
+        expect(interpolate('{{math: rand()}}', {})).toBe('0');
+    });
+
+    it('composes in arithmetic — rand() * 100 with mock 0.5 = 50', () => {
+        vi.spyOn(Math, 'random').mockReturnValue(0.5);
+        expect(interpolate('{{math: rand() * 100}}', {})).toBe('50');
+    });
+
+    it('result is within [0, 1) without mocking', () => {
+        const result = parseFloat(interpolate('{{math: rand()}}', {}));
+        expect(result).toBeGreaterThanOrEqual(0);
+        expect(result).toBeLessThan(1);
+    });
+});
+
 describe('{{math:}} — chatvar / globalvar substitution in expression', () => {
     it('chatvar value resolves before math evaluates', () => {
         vi.mocked(getLocalVariable).mockReturnValue(85);

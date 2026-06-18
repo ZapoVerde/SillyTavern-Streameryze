@@ -23,7 +23,7 @@ import { trgLog } from '../logger.js';
 
 export const TRANSFORM_PREFIXES = [
     'trim:', 'upper:', 'lower:', 'lines:', 'words:', 'default:',
-    'chars:', 'last:', 'nth:', 'cap:', 'len:', 'join:', 'replace:', 'bar:', 'pad:',
+    'chars:', 'last:', 'nth:', 'cap:', 'len:', 'join:', 'replace:', 'bar:', 'pad:', 'pick:',
 ];
 
 export function resolveTransforms(template) {
@@ -85,6 +85,18 @@ export function resolveTransforms(template) {
         const w = parseInt(n, 10);
         if (val.length > w) return val.slice(0, w - 1) + '…';
         return val + ' '.repeat(w - val.length);
+    });
+
+    // {{pick: N: val}} — N random non-empty lines from val, newline-joined
+    template = template.replace(/\{\{pick:\s*(\d+):\s*([\s\S]*?)\}\}/g, (_, n, val) => {
+        const count = Math.max(1, parseInt(n, 10));
+        const lines = val.split('\n').filter(s => s.trim());
+        if (!lines.length) return '';
+        for (let i = lines.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [lines[i], lines[j]] = [lines[j], lines[i]];
+        }
+        return lines.slice(0, count).join('\n');
     });
 
     // {{bar: value : bucketSize : max }} — colon bar chart.

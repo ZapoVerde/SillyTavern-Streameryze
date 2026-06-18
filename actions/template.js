@@ -329,10 +329,20 @@ function resolvePsCharSum(template, messageId, vars) {
 function _evalMath(expr) {
     const cleaned = expr.trim();
     if (!cleaned) return '';
-    if (!/^[0-9\s+\-*/%().eE]+$/.test(cleaned)) return '';
+    // Pre-substitute rand() and randint(N, M) with numeric literals before the safe-character check.
+    // randint first (more specific) so it doesn't interact with the rand() pattern.
+    let e = cleaned
+        .replace(/\brandint\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)/g, (_, a, b) => {
+            const lo = parseInt(a, 10);
+            const hi = parseInt(b, 10);
+            if (lo > hi) return '';
+            return String(Math.floor(Math.random() * (hi - lo + 1)) + lo);
+        })
+        .replace(/\brand\(\s*\)/g, () => String(Math.random()));
+    if (!/^[0-9\s+\-*/%().eE]+$/.test(e)) return '';
     try {
         // eslint-disable-next-line no-new-func
-        const result = Function('"use strict"; return (' + cleaned + ')')();
+        const result = Function('"use strict"; return (' + e + ')')();
         if (typeof result !== 'number' || !isFinite(result)) return '';
         return Number.isInteger(result) ? String(result) : String(parseFloat(result.toFixed(6)));
     } catch { return ''; }
@@ -360,6 +370,7 @@ export function interpolate(template, vars, ruleVars = {}) {
     // {{varName}} — defer {{math:...}} and transform tokens for evaluation after all substitution
     out = out.replace(/\{\{([^{}]+)\}\}/g, (_, key) => {
         const k = key.trim();
+        if (k === 'uuid') return crypto.randomUUID();
         if (_DEFERRED.has(k.split(':')[0] + ':')) return `{{${key}}}`;
         return lookup(k);
     });

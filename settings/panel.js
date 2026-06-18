@@ -94,6 +94,7 @@ export async function addSettingsPanel() {
                 <tr><td><span class="trg-help-eg">{{history:[2]:user}}</span></td><td>last 2 user messages; also :ai, :[Name], :[Glob*], :varName</td></tr>
                 <tr><td><span class="trg-help-eg">{{char}}</span></td><td>character name</td></tr>
                 <tr><td><span class="trg-help-eg">{{user}}</span></td><td>user name</td></tr>
+                <tr><td><span class="trg-help-eg">{{chat_id}}</span></td><td>current chat file name (no extension) — stable per-chat identifier</td></tr>
                 <tr><td><span class="trg-help-eg">{{highlighted}}</span></td><td>text selected when a badge button was clicked</td></tr>
             </table>
             <p style="margin-top:6px;opacity:.6;font-size:.9em">Rule variables (amber chips) are set by a prior action's <em>Save as</em> field. Cross-rule variables (purple chips) are set by an action in another rule that fired this turn. Both clear at the start of each generation.</p>
@@ -104,8 +105,12 @@ export async function addSettingsPanel() {
                 <tr><td><span class="trg-help-eg">{{math: {{chatvar::hp}} - 15 }}</span></td><td>subtract 15 from chat variable hp</td></tr>
                 <tr><td><span class="trg-help-eg">{{math: {{score}} * 2 + 10 }}</span></td><td>double a rule variable and add 10</td></tr>
                 <tr><td><span class="trg-help-eg">{{math: {{chatvar::stats.gold}} / 4 }}</span></td><td>divide an object property</td></tr>
+                <tr><td><span class="trg-help-eg">{{math: randint(1, 20) }}</span></td><td>d20 roll — random integer in [1, 20]</td></tr>
+                <tr><td><span class="trg-help-eg">{{math: randint(1, 6) + randint(1, 6) }}</span></td><td>2d6 — two independent rolls summed</td></tr>
+                <tr><td><span class="trg-help-eg">{{math: {{chatvar::hp}} - randint(1, 8) }}</span></td><td>subtract a random damage roll from hp</td></tr>
+                <tr><td><span class="trg-help-eg">{{math: rand() }}</span></td><td>random float in [0, 1)</td></tr>
             </table>
-            <p style="opacity:.6;font-size:.9em">Operators: <span class="trg-help-eg">+ - * / % **</span> and parentheses. Returns empty string on invalid input.</p>
+            <p style="opacity:.6;font-size:.9em">Operators: <span class="trg-help-eg">+ - * / % **</span> and parentheses. Functions: <span class="trg-help-eg">rand()</span> → float [0,1) &nbsp;·&nbsp; <span class="trg-help-eg">randint(N, M)</span> → integer in [N, M]. Returns empty string on invalid input.</p>
         </div>
         </div>
 
@@ -130,6 +135,7 @@ export async function addSettingsPanel() {
                 <tr><td><span class="trg-help-eg">{{replace: find: with: value}}</span></td><td>replace all occurrences of <em>find</em> with <em>with</em> (literal)</td></tr>
                 <tr><td><span class="trg-help-eg">{{default: fallback: value}}</span></td><td>use <em>value</em> if non-empty, otherwise <em>fallback</em></td></tr>
                 <tr><td><span class="trg-help-eg">{{bar: value: bucketSize: max}}</span></td><td>colon bar chart — 1 colon per full bucket, <span class="trg-help-eg">.</span> for &gt;20% remainder, <span class="trg-help-eg">+</span> on overflow</td></tr>
+                <tr><td><span class="trg-help-eg">{{pick: N: value}}</span></td><td>N random non-empty lines, newline-joined</td></tr>
             </table>
             <table class="trg-ref-table" style="margin-top:6px">
                 <tr><td><span class="trg-help-eg">{{trim: {{message}}}}</span></td><td>trimmed message text</td></tr>
@@ -159,7 +165,7 @@ export async function addSettingsPanel() {
                 <tr><td><span class="trg-help-eg">lbname</span></td><td>lorebook name to search in &nbsp;<em style="opacity:.5">(default: all lorebooks)</em></td></tr>
                 <tr><td><span class="trg-help-eg">titlename</span></td><td>entry title to match &nbsp;<em style="opacity:.5">(default: any title)</em></td></tr>
                 <tr><td><span class="trg-help-eg">keyname</span></td><td>activation key to match &nbsp;<em style="opacity:.5">(default: any key)</em></td></tr>
-                <tr><td><span class="trg-help-eg">mode</span></td><td><strong><span class="trg-help-eg">first</span>(*)</strong> | <span class="trg-help-eg">last</span> | <span class="trg-help-eg">all</span></td></tr>
+                <tr><td><span class="trg-help-eg">mode</span></td><td><strong><span class="trg-help-eg">first</span>(*)</strong> | <span class="trg-help-eg">last</span> | <span class="trg-help-eg">all</span> | <span class="trg-help-eg">rnd</span></td></tr>
                 <tr><td><span class="trg-help-eg">scope</span></td><td><strong><span class="trg-help-eg">active</span>(*)</strong> | <span class="trg-help-eg">inactive</span> | <span class="trg-help-eg">all</span></td></tr>
             </table>
             <p><strong>Filter values:</strong> <span class="trg-help-eg">[Literal]</span> = exact literal &nbsp;·&nbsp; <span class="trg-help-eg">[A,B,C]</span> = match any of these &nbsp;·&nbsp; bare word = turn variable name resolved at runtime</p>
@@ -179,6 +185,8 @@ export async function addSettingsPanel() {
                 <tr><td><span class="trg-help-eg">{{lbBooks:::[love]}}</span></td><td>which lorebooks have an entry with key "love"</td></tr>
                 <tr><td><span class="trg-help-eg">{{lbContent::::all}}</span></td><td>all entry contents joined with blank lines</td></tr>
                 <tr><td><span class="trg-help-eg">{{lbContent:::::all}}</span></td><td>all entry contents including inactive entries</td></tr>
+                <tr><td><span class="trg-help-eg">{{lbContent::::rnd}}</span></td><td>one randomly chosen entry's content</td></tr>
+                <tr><td><span class="trg-help-eg">{{lbTitles::::rnd}}</span></td><td>one randomly chosen entry title</td></tr>
             </table>
             <p style="opacity:.6;font-size:.9em">Keyword fields also support lb tokens and <span class="trg-help-eg">{{varName}}</span> expansion.</p>
         </div>
@@ -217,19 +225,25 @@ export async function addSettingsPanel() {
             Data mapping <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
         </div>
         <div class="inline-drawer-content trg-ref-sub-content">
-            <p>Run a template body over every row of multi-column data — one output line per input row. Works with any turn variable, or directly with <span class="trg-help-eg">chatvar::</span> / <span class="trg-help-eg">globalvar::</span> sources.</p>
-            <div class="trg-help-eg trg-ref-block">{{mapLines: delimiter : source}}<br>{{.1}} and {{.2}} are column references<br>{{/mapLines}}</div>
-            <table class="trg-ref-table">
-                <tr><td><span class="trg-help-eg">delimiter</span></td><td><span class="trg-help-eg">\t</span> for tab, <span class="trg-help-eg">,</span> for comma, etc.</td></tr>
-                <tr><td><span class="trg-help-eg">source</span></td><td>turn variable name, <span class="trg-help-eg">chatvar::name</span>, or <span class="trg-help-eg">globalvar::name</span></td></tr>
-                <tr><td><span class="trg-help-eg">{{.1}}, {{.2}}, …</span></td><td>column references (1-based); empty string if column is missing</td></tr>
+            <table class="trg-ref-table" style="margin-bottom:10px">
+                <tr><td><span class="trg-help-eg">{{uuid}}</span></td><td>globally unique ID — a new v4 UUID on every call; store with <em>Save as</em> to reuse</td></tr>
             </table>
-            <p style="margin-top:6px"><strong>Two-step workflow</strong> — capture the data into a turn variable first, then map over it:</p>
-            <table class="trg-ref-table trg-ref-examples" style="margin-top:2px">
-                <tr><td><em>compose "ps_rows"</em> → <span class="trg-help-eg">{{psRows}}</span></td></tr>
-                <tr><td><em>compose "layer_bars"</em> → <span class="trg-help-eg">{{mapLines: \t : ps_rows}}{{.1}} {{bar: {{.2}} : 4000 : 20}}{{/mapLines}}</span></td></tr>
-            </table>
-            <p style="opacity:.6;font-size:.9em;margin-top:6px">Blank lines in the source are skipped. Output is newline-joined rows — pair with a badge trigger's <span class="trg-help-eg">split-on: \n</span> to create one badge per row.</p>
+            <div style="border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:8px 10px">
+                <p style="margin:0 0 6px;font-weight:bold;opacity:.7;font-size:.9em">Map blocks</p>
+                <p style="margin:0 0 6px">Run a template body over every row of multi-column data — one output line per input row. Works with any turn variable or <span class="trg-help-eg">chatvar::</span> / <span class="trg-help-eg">globalvar::</span> sources.</p>
+                <div class="trg-help-eg trg-ref-block">{{mapLines: delimiter : source}}<br>{{.1}} and {{.2}} are column references<br>{{/mapLines}}</div>
+                <table class="trg-ref-table" style="margin-top:6px">
+                    <tr><td><span class="trg-help-eg">delimiter</span></td><td><span class="trg-help-eg">\t</span> for tab, <span class="trg-help-eg">,</span> for comma, etc.</td></tr>
+                    <tr><td><span class="trg-help-eg">source</span></td><td>turn variable name, <span class="trg-help-eg">chatvar::name</span>, or <span class="trg-help-eg">globalvar::name</span></td></tr>
+                    <tr><td><span class="trg-help-eg">{{.1}}, {{.2}}, …</span></td><td>column references (1-based); empty string if column is missing</td></tr>
+                </table>
+                <p style="margin:6px 0 2px"><strong>Two-step workflow</strong> — capture data into a turn variable first, then map over it:</p>
+                <table class="trg-ref-table trg-ref-examples">
+                    <tr><td><em>compose "ps_rows"</em> → <span class="trg-help-eg">{{psRows}}</span></td></tr>
+                    <tr><td><em>compose "layer_bars"</em> → <span class="trg-help-eg">{{mapLines: \t : ps_rows}}{{.1}} {{bar: {{.2}} : 4000 : 20}}{{/mapLines}}</span></td></tr>
+                </table>
+                <p style="opacity:.6;font-size:.9em;margin:6px 0 0">Blank lines in the source are skipped. Output is newline-joined rows — pair with a badge trigger's <span class="trg-help-eg">split-on: \n</span> to create one badge per row.</p>
+            </div>
         </div>
         </div>
 
