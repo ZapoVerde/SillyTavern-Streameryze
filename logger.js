@@ -13,7 +13,7 @@
  * trgWarn(...args)       — always on; outputs [TRG] ...args
  * trgError(...args)      — always on; outputs [TRG] ...args
  * trgInfo(...args)       — always on; outputs [TRG] ...args
- * trgPerf(msg)           — always on; outputs [TRG:PERF] msg
+ * trgPerf(msg)           — verbose-gated; outputs [TRG:PERF] msg
  *
  * @contract
  *   assertions:
@@ -29,4 +29,4 @@ export const trgDev   = (debug, ...args) => { if (debug) console.log('[TRG:dev]'
 export const trgWarn  = (...args) => console.warn('[TRG]', ...args);
 export const trgError = (...args) => console.error('[TRG]', ...args);
 export const trgInfo  = (...args) => console.info('[TRG]', ...args);
-export const trgPerf  = (msg) => console.info(`[TRG:PERF] ${msg}`);
+export const trgPerf  = (msg) => { if (getSettings()?.verbose) console.info(`[TRG:PERF] ${msg}`); };

@@ -19,7 +19,7 @@
 
 import { eventSource, event_types }                                        from '../../../../script.js';
 import { onGenerationStarted, onStreamToken, onMessageReceived, onCharacterMessageRendered, onMessageSwiped, fireRuleManually, reinjectRuleBadges, reinjectInlineBadges } from './engine.js';
-import { ensureBadge, setBadge, reinjectAllBadges, removeAllBadges }       from './badge.js';
+import { clearAllMessageBadges, setBadge, reinjectAllBadges, removeAllBadges } from './badge.js';
 import { loadSettings }                                                    from './settings/storage.js';
 import { addSettingsPanel }                                                from './settings/panel.js';
 
@@ -29,9 +29,14 @@ eventSource.on(event_types.GENERATION_STARTED,         onGenerationStarted);
 eventSource.on(event_types.STREAM_TOKEN_RECEIVED,       onStreamToken);
 eventSource.on(event_types.MESSAGE_RECEIVED,            onMessageReceived);
 eventSource.on(event_types.CHAT_CHANGED,              () => { reinjectAllBadges(); reinjectRuleBadges(); reinjectInlineBadges(); });
-eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED,  (messageId) => { ensureBadge(messageId); reinjectRuleBadges(messageId); reinjectInlineBadges(messageId); onCharacterMessageRendered(messageId); });
+// Badge injection and the _prevTurnAiId demolition guard both live inside
+// onCharacterMessageRendered so all badge-related logic for this event stays
+// in one place rather than being split between here and engine.js.
+eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, onCharacterMessageRendered);
 eventSource.on(event_types.MESSAGE_SWIPED, (messageId) => {
-    $(`.mes[mesid="${messageId}"]`).find('.trg-rule-badge, .trg-bottom-badges').remove();
+    // Clear all badge types immediately so stale badges from the outgoing variant
+    // don't linger until the first token of the regeneration arrives.
+    clearAllMessageBadges(messageId);
     onMessageSwiped(messageId);
 });
 

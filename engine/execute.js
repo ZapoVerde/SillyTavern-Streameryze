@@ -21,7 +21,7 @@
  *     external_io:     delegates all IO to ACTION_REGISTRY entries
  */
 
-import { getSettings }                                                      from '../settings/storage.js';
+import { getSettings, getEnabledRules }                                     from '../settings/storage.js';
 import { stageMatches, getVarDeps, evaluateTriggers }                       from './evaluate.js';
 import { hasLiveResult, setLiveResult }                                     from './live-patch.js';
 import { ACTION_REGISTRY, getTemplateTier, resolveLbTokens, interpolate }   from '../actions/index.js';
@@ -67,11 +67,11 @@ export async function executeActions(rule, stage, execCtx, getGenId) {
 
     const runOne = async ({ a, idx }) => {
         const deps = getVarDeps(a.config, knownVars);
-        console.debug(`[TRG:exec] action[${idx}] type=${a.type} outputVar=${a.config?.outputVar ?? '—'} deps=[${deps.join(', ')}]`);
+        trgLog('exec action', { idx, type: a.type, outputVar: a.config?.outputVar, deps });
         if (deps.length) {
             trgDev(debug, `  [${idx}] ${a.type} waiting for: [${deps.join(', ')}]`);
             await Promise.all(deps.map(d => varReady.get(d).promise));
-            console.debug(`[TRG:exec] action[${idx}] ${a.type} unblocked | ${deps.map(d => `${d}=${JSON.stringify((vars[d] ?? '').toString().slice(0, 40))}`).join(' ')}`);
+            trgLog('exec action unblocked', { idx, type: a.type, vars: Object.fromEntries(deps.map(d => [d, (vars[d] ?? '').toString().slice(0, 40)])) });
             trgDev(debug, `  [${idx}] ${a.type} unblocked | vars:`, { ...vars });
         }
 
@@ -108,8 +108,7 @@ export async function executeActions(rule, stage, execCtx, getGenId) {
 export async function applyEarlyActions(text, streamingMessageId, stCtx, getGenId) {
     const s = getSettings();
 
-    for (const rule of (s.rules ?? [])) {
-        if (!rule.enabled) continue;
+    for (const rule of getEnabledRules(s)) {
         if (rule.triggers?.some(t => t.type === 'event' && t.config?.event === 'MESSAGE_RECEIVED')) continue;
 
         const ruleVars   = new Set((rule.actions ?? []).map(a => a.config?.outputVar).filter(Boolean));
@@ -164,7 +163,7 @@ export async function applyEarlyActions(text, streamingMessageId, stCtx, getGenI
                     const resolved = await resolveLbTokens(a.config?.value ?? '', matched, '', vars);
                     const value    = interpolate(resolved, { keyword: matched, message: text, 'up-to': upTo, paragraph: para }, vars);
                     setLiveResult(key, { keyword: matched, replacement: value, mode: a.config?.mode ?? 'replaceKeyword' });
-                    log('early live-preview computed', { key, mode: a.config?.mode });
+                    trgLog('early live-preview computed', { key, mode: a.config?.mode });
                 } catch (err) {
                     trgError('early live-preview', a.type, 'threw', err);
                 }

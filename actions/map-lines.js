@@ -21,6 +21,7 @@
  */
 
 import { getLocalVariable, getGlobalVariable } from '../../../../../scripts/variables.js';
+import { trgLog } from '../logger.js';
 import { resolveStVar }                         from './condition.js';
 
 function _parseSep(raw) {
@@ -45,7 +46,7 @@ export function resolveMapLines(template, vars) {
             const sep    = _parseSep(parts[0].trim());
             const source = parts.slice(1).join(' : ').trim();
             const data   = _resolveSource(source, vars);
-            console.debug(`[TRG:mapLines] source="${source}" rows=${data ? data.split('\n').filter(Boolean).length : 0} empty=${!data.trim()} sample=${JSON.stringify(data.slice(0, 80))}`);
+            trgLog('mapLines source', { source, rows: data ? data.split('\n').filter(Boolean).length : 0, empty: !data.trim() });
             if (!data.trim()) return '';
 
             const tplBody = body.trim();
@@ -55,7 +56,7 @@ export function resolveMapLines(template, vars) {
                 const out  = tplBody.replace(/\{\{\.(\d+)\}\}/g, (_, i) => cols[parseInt(i, 10) - 1] ?? '');
                 return out;
             });
-            console.debug(`[TRG:mapLines] expanded[0]=${JSON.stringify(expanded[0])} total=${expanded.length}`);
+            trgLog('mapLines expanded', { total: expanded.length, first: expanded[0] });
             return expanded.join('\n');
         },
     );

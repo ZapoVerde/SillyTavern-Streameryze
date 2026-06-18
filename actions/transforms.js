@@ -19,6 +19,8 @@
  *     external_io:     none
  */
 
+import { trgLog } from '../logger.js';
+
 export const TRANSFORM_PREFIXES = [
     'trim:', 'upper:', 'lower:', 'lines:', 'words:', 'default:',
     'chars:', 'last:', 'nth:', 'cap:', 'len:', 'join:', 'replace:', 'bar:', 'pad:',
@@ -95,13 +97,13 @@ export function resolveTransforms(template) {
         if (n >= b * m) return ':'.repeat(m) + '+';
         const full = Math.floor(n / b);
         const result = ':'.repeat(full) + (n % b > b * 0.2 ? '.' : '');
-        console.debug(`[TRG:bar] val=${val} bucket=${bucket} max=${maxCols} → "${result}"`);
+        trgLog('bar transform', { val, bucket, maxCols, result });
         return result;
     });
     // debug: flag any unresolved {{bar:}} tokens that didn't match (non-numeric first arg)
     if (template.includes('{{bar:')) {
         const unresolved = template.match(/\{\{bar:[^}]*\}\}/g) ?? [];
-        if (unresolved.length) console.debug('[TRG:bar] unresolved tokens:', unresolved);
+        if (unresolved.length) trgLog('bar unresolved tokens', unresolved);
     }
 
     return template;

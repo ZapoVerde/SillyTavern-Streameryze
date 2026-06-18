@@ -21,7 +21,7 @@ import { name1, name2 } from '../../../../../script.js';
 import { interpolate, resolveLbTokens } from './template.js';
 import { esc } from './text.js';
 import { renderVarLegend } from './var-legend.js';
-import { trgDev } from '../logger.js';
+import { trgDev, trgLog } from '../logger.js';
 
 export const compose = {
     label: 'compose variable',
@@ -44,7 +44,7 @@ export const compose = {
             user:    name1 ?? '',
         }, vars);
         trgDev(debug, `  compose "${config.outputVar}" =`, result);
-        console.debug(`[TRG:compose] "${config.outputVar}" = ${JSON.stringify(result.slice(0, 120))}${result.length > 120 ? `… (${result.length} chars)` : ''}`);
+        trgLog('compose result', { outputVar: config.outputVar, result: result.slice(0, 120) + (result.length > 120 ? `… (${result.length} chars)` : '') });
         vars[config.outputVar] = result;
     },
     renderConfig($el, config, onChange, ctx) {

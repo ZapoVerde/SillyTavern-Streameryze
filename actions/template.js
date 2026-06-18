@@ -31,7 +31,7 @@ import { resolveMapLines }                         from './map-lines.js';
 import { getTurnVarsSnapshot }                      from '../triggers/turn-vars.js';
 import { getLocalVariable, getGlobalVariable }      from '../../../../../scripts/variables.js';
 import { resolveStVar, evalCondition }              from './condition.js';
-import { trgWarn }                                 from '../logger.js';
+import { trgWarn, trgLog }                         from '../logger.js';
 import { oai_settings, promptManager }              from '../../../../../scripts/openai.js';
 import { itemizedPrompts }                          from '../../../../../scripts/itemized-prompts.js';
 import { resolveTransforms, TRANSFORM_PREFIXES }    from './transforms.js';
@@ -168,7 +168,7 @@ function resolvePsRows(template, messageId, vars) {
     const defs     = oai_settings?.prompts ?? [];
     const messages = promptManager?.messages?.flatten() ?? [];
 
-    console.debug(`[TRG:psRows] mesId=${messageId} promptManager=${!!promptManager} messages=${messages.length} defs=${defs.length}`);
+    trgLog('psRows', { messageId, promptManager: !!promptManager, messages: messages.length, defs: defs.length });
 
     if (!messages.length) return template.replace(RE, '');
 
@@ -180,7 +180,7 @@ function resolvePsRows(template, messageId, vars) {
             return [displayName, msg.content.length, msg.identifier];
         });
 
-    console.debug(`[TRG:psRows] allRows=${allRows.length} sample:`, allRows.slice(0, 3).map(([n, c]) => `${n}\t${c}`));
+    trgLog('psRows allRows', { count: allRows.length, sample: allRows.slice(0, 3).map(([n, c]) => `${n}\t${c}`) });
 
     return template.replace(RE, (_, argStr) => {
         const parts      = argStr ? argStr.slice(1).split(':') : [];
@@ -234,7 +234,7 @@ function resolvePsRows(template, messageId, vars) {
             return `${name}\t${charCount}`;
         }).filter(Boolean).join('\n');
 
-        console.debug(`[TRG:psRows] filter="${nameFilter ?? '(none)'}" matched=${filtered.length} subs=${subSpecs.length} output=${JSON.stringify(output.slice(0, 80))}`);
+        trgLog('psRows filter', { nameFilter, matched: filtered.length, subs: subSpecs.length });
         return output;
     });
 }
@@ -276,7 +276,7 @@ function resolvePsMaxNameLen(template, messageId, vars) {
 
         const matched = allRows.filter(([name, id]) => _filterMatches(nameFilter, id, name));
         const max = matched.reduce((m, [name]) => Math.max(m, name.length), 0);
-        console.debug(`[TRG:psMaxNameLen] filter="${JSON.stringify(nameFilter)}" matched=${matched.length} max=${max} longest="${matched.find(([n]) => n.length === max)?.[0] ?? ''}"`);
+        trgLog('psMaxNameLen', { nameFilter, matched: matched.length, max });
         return String(max);
     });
 }
@@ -317,7 +317,7 @@ function resolvePsCharSum(template, messageId, vars) {
 
         const matched = allRows.filter(([name, , id]) => _filterMatches(nameFilter, id, name));
         const total   = matched.reduce((sum, [, charCount]) => sum + charCount, 0);
-        console.debug(`[TRG:psCharSum] filter="${JSON.stringify(nameFilter)}" matched=${matched.length} total=${total}`);
+        trgLog('psCharSum', { nameFilter, matched: matched.length, total });
         return String(total);
     });
 }
@@ -459,7 +459,7 @@ export async function resolveLbTokens(template, _matchedKeyword, _highlighted, v
         template = resolvePsCharSum(template, messageId, mergedVars);
     if (template.includes('{{mapLines')) {
         const mapVarNames = [...template.matchAll(/\{\{mapLines(?:[^}])*:\s*([^:}\s][^}]*?)\s*\}\}/g)].map(m => m[1].trim());
-        console.debug(`[TRG:mapLines:pre] vars available=[${Object.keys(mergedVars).join(', ')}] sources=${JSON.stringify(mapVarNames)} ps_rows.len=${(mergedVars['ps_rows'] ?? '').length}`);
+        trgLog('mapLines pre', { vars: Object.keys(mergedVars), sources: mapVarNames, ps_rows_len: (mergedVars['ps_rows'] ?? '').length });
         template = resolveMapLines(template, mergedVars);
     }
     return template;

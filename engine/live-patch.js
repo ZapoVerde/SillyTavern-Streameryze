@@ -30,7 +30,7 @@
  */
 
 import { messageFormatting }                                       from '../../../../../script.js';
-import { getSettings }                                             from '../settings/storage.js';
+import { getSettings, getEnabledRules }                            from '../settings/storage.js';
 import { evaluateTriggers, getVarDeps }                            from './evaluate.js';
 import { resolveLbTokens, prefetchSideCall, getPrefetchedResults } from '../actions/index.js';
 import { setBadge }                                                from '../badge.js';
@@ -148,8 +148,7 @@ export async function applyLivePatch(text, streamingMessageId, stCtx) {
     let displayText = text;
     let anyChange   = false;
 
-    for (const rule of (s.rules ?? [])) {
-        if (!rule.enabled) continue;
+    for (const rule of getEnabledRules(s)) {
         const replaceActions = (rule.actions ?? []).filter(a => a.type === 'replace');
         if (!replaceActions.length) continue;
 
@@ -243,8 +242,7 @@ async function attachLiveApply(promise, key, config, matchedKeyword, streamingMe
 
 export async function applyPrefetch(text, streamingMessageId, stCtx, getGenId) {
     const s = getSettings();
-    for (const rule of (s.rules ?? [])) {
-        if (!rule.enabled) continue;
+    for (const rule of getEnabledRules(s)) {
         const sideCallIdxs = (rule.actions ?? []).map((a, idx) => ({ a, idx })).filter(({ a }) => a.type === 'sideCall');
         if (!sideCallIdxs.length) continue;
 

@@ -20,7 +20,7 @@
  * onGenerationStarted()                 — clears dedup state, then fires event:GENERATION_STARTED rules
  * onStreamToken(text)                   — stream-stage rule loop + live patch passes
  * onMessageReceived(messageId)          — postMessage-stage rule loop (with recheck)
- * onCharacterMessageRendered(messageId) — fires event:CHARACTER_MESSAGE_RENDERED rules for a message
+ * onCharacterMessageRendered(messageId) — badge rebuild + event:CHARACTER_MESSAGE_RENDERED rule dispatch
  * fireRuleManually(ruleId, msgId, highlighted, forcedMatchedKw?) — badge-triggered manual rule execution
  * reinjectRuleBadges(messageId?)        — render or refresh rule badge buttons
  * reinjectInlineBadges(messageId?)      — inject or refresh inline keyword badge spans
@@ -28,7 +28,7 @@
  * @contract
  *   assertions:
  *     purity:          none — owns _fired, _generationId; reads/writes DOM via sub-modules
- *     state_ownership: [_generationId, _fired]
+ *     state_ownership: [_generationId, _fired, _firstTokenFired, _prevTurnAiId]
  *     external_io:     delegates all IO to engine/ sub-modules and badge.js
  */
 
@@ -37,7 +37,7 @@ import { clearWiCache }                                from './triggers/lb-query
 import { clearTurnVars }                              from './triggers/turn-vars.js';
 import { setCurrentEvent, clearCurrentEvent }         from './triggers/event.js';
 import { clearPrefetchCache, isDispatchActive }                              from './actions/index.js';
-import { ensureBadge, setBadge, renderRuleBadges, clearRuleBadges, injectInlineBadges, reinjectAllInlineBadges, removeAllInlineBadges, startInlineBadgeRemovalWatcher, stopInlineBadgeRemovalWatcher } from './badge.js';
+import { clearAllMessageBadges, ensureBadge, setBadge, renderRuleBadges, injectInlineBadges, reinjectAllInlineBadges, removeAllInlineBadges, startInlineBadgeRemovalWatcher, stopInlineBadgeRemovalWatcher } from './badge.js';
 import { evaluateTriggers, ruleHasStage }                                     from './engine/evaluate.js';
 import { stopPatchObserver, applyLivePatch, applyPrefetch, applyInlineBadgePatch, clearLivePatchState, highlightPendingKeyword, clearPendingHighlights } from './engine/live-patch.js';
 import { executeActions, applyEarlyActions, clearEarlyFired }                from './engine/execute.js';
@@ -46,7 +46,10 @@ import { trgLog, trgPerf }                                                    fr
 let _generationId    = 0;
 const _fired         = new Set();
 let _firstTokenFired = false;
-let _prevLastId      = -1;
+// Index of the last completed AI message before the current generation began.
+// Set in onGenerationStarted; used to demolish that turn's badges on first token
+// and to guard CHARACTER_MESSAGE_RENDERED from rebuilding them mid-generation.
+let _prevTurnAiId    = -1;
 
 function _isBadgeTrigger(t) {
     return t.type === 'badge' && t.config?.style !== 'inline' || t.type === 'badgeTrigger';
@@ -108,7 +111,7 @@ export async function fireRuleManually(ruleId, messageId, highlighted = '', forc
 export function reinjectRuleBadges(messageId = null) {
     const s    = getSettings();
     const defs = getRuleBadgeDefs(getEnabledRules(s));
-    console.debug(`[TRG:badge] reinjectRuleBadges mesId=${messageId} defs=${defs.length}`);
+    trgLog('badge reinjectRuleBadges', { messageId, defs: defs.length });
     if (messageId !== null) { renderRuleBadges(messageId, defs); return; }
     const stCtx = window.SillyTavern?.getContext?.();
     if (!stCtx?.chat) return;
@@ -118,7 +121,7 @@ export function reinjectRuleBadges(messageId = null) {
 export function reinjectInlineBadges(messageId = null) {
     const s    = getSettings();
     const defs = getInlineBadgeDefs(getEnabledRules(s));
-    console.debug(`[TRG:badge] reinjectInlineBadges mesId=${messageId} defs=${defs.length}`);
+    trgLog('badge reinjectInlineBadges', { messageId, defs: defs.length });
     if (messageId !== null) { injectInlineBadges(messageId, defs); return; }
     reinjectAllInlineBadges(defs);
 }
@@ -135,8 +138,17 @@ export async function onGenerationStarted() {
     clearWiCache();
     clearTurnVars();
     const stCtx = window.SillyTavern?.getContext?.();
-    _prevLastId = (stCtx?.chat?.length ?? 0) - 1;
-    trgLog('generation started — dedup cleared');
+    // Find the last completed AI message before this generation starts.
+    // We scan backwards from the tail of chat, skipping any user message and
+    // any AI placeholder that has no content yet (ST may have inserted an empty
+    // slot before firing GENERATION_STARTED). The result is the message whose
+    // badges should be demolished when the first token arrives.
+    const _chat = stCtx?.chat ?? [];
+    _prevTurnAiId = -1;
+    for (let i = _chat.length - 1; i >= 0; i--) {
+        if (!_chat[i]?.is_user && _chat[i]?.mes) { _prevTurnAiId = i; break; }
+    }
+    trgLog('generation started — dedup cleared', { prevTurnAiId: _prevTurnAiId });
 
     const s = getSettings();
     if (!s?.enabled) return;
@@ -166,7 +178,13 @@ export async function onStreamToken(text) {
     if (!s?.enabled) return;
     if (!_firstTokenFired) {
         _firstTokenFired = true;
-        if (_prevLastId >= 0) setBadge(_prevLastId, 'unchanged');
+        // Demolish every badge on the previous AI turn in one call: status pill,
+        // top rule buttons, bottom container, and inline keyword spans.
+        // After this point, CHARACTER_MESSAGE_RENDERED is guarded (see below) so
+        // ST cannot rebuild them for _prevTurnAiId during this generation.
+        if (_prevTurnAiId >= 0) clearAllMessageBadges(_prevTurnAiId);
+        // Global inline sweep: applyInlineBadgePatch may have grown inline badges
+        // on other messages during the previous generation. Remove any that remain.
         removeAllInlineBadges();
     }
     const stCtx = window.SillyTavern?.getContext?.();
@@ -205,7 +223,7 @@ export async function onMessageReceived(messageId) {
     setCurrentEvent('MESSAGE_RECEIVED');
     ensureBadge(messageId);
     const _enabledRules = getEnabledRules(s);
-    console.debug(`[TRG:badge] onMessageReceived mesId=${messageId} enabledRules=${_enabledRules.length} ruleBadgeDefs=${getRuleBadgeDefs(_enabledRules).length} inlineDefs=${getInlineBadgeDefs(_enabledRules).length}`);
+    trgLog('badge onMessageReceived', { messageId, enabledRules: _enabledRules.length, ruleBadgeDefs: getRuleBadgeDefs(_enabledRules).length, inlineDefs: getInlineBadgeDefs(_enabledRules).length });
     renderRuleBadges(messageId, getRuleBadgeDefs(_enabledRules));
     injectInlineBadges(messageId, getInlineBadgeDefs(_enabledRules));
 
@@ -243,11 +261,11 @@ export async function onMessageReceived(messageId) {
     }
 
     // Re-render rule badges now that compose actions have populated turn vars (e.g. layer_bars).
-    console.debug('[TRG:badge] onMessageReceived post-loop re-render');
+    trgLog('badge post-loop re-render', { messageId });
     renderRuleBadges(messageId, getRuleBadgeDefs(getEnabledRules(s)));
     // Re-inject inline badges after yielding to the event loop so ST has a chance to commit
     // its final markdown-rendered DOM before we walk text nodes.
-    setTimeout(() => { console.debug('[TRG:badge] setTimeout inline re-inject'); injectInlineBadges(messageId, getInlineBadgeDefs(getEnabledRules(s))); }, 0);
+    setTimeout(() => { trgLog('badge setTimeout inline re-inject', { messageId }); injectInlineBadges(messageId, getInlineBadgeDefs(getEnabledRules(s))); }, 0);
 
     if (matchedKeywords.size) {
         const mesTextEl = document.querySelector(`.mes[mesid="${messageId}"] .mes_text`);
@@ -298,20 +316,53 @@ export async function onMessageSwiped(messageId) {
     }
 }
 
+/**
+ * Rebuild all badge types for one message from current settings.
+ *
+ * This is the single "reconstruct" counterpart to clearAllMessageBadges.
+ * Call it whenever ST re-renders a message that is not the demolished
+ * previous-turn message.
+ *
+ * Why inline badges are NOT different here: for historical/completed messages,
+ * injectInlineBadges runs once on the final text — no growth tracking needed.
+ * Per-token inline growth only applies to the actively streaming message and
+ * is handled separately by applyInlineBadgePatch (which chases the live buffer).
+ */
+async function _renderAllBadgesForMessage(messageId) {
+    const enabledRules = getEnabledRules(getSettings());
+    ensureBadge(messageId);
+    renderRuleBadges(messageId, getRuleBadgeDefs(enabledRules));
+    await injectInlineBadges(messageId, getInlineBadgeDefs(enabledRules));
+}
+
 export async function onCharacterMessageRendered(messageId) {
     const s = getSettings();
     if (!s?.enabled) return;
+
+    // GUARD: once the first token of the current generation has landed, the
+    // previous AI turn's badges were demolished in onStreamToken. ST can re-fire
+    // CHARACTER_MESSAGE_RENDERED for that message (e.g. after a context-menu
+    // action re-renders it). Block all badge injection so the demolition sticks
+    // for the full duration of this generation.
+    if (_firstTokenFired && messageId === _prevTurnAiId) return;
+
+    // Rebuild badge state for any non-demolished message that ST has re-rendered.
+    // Runs for historical messages too: on page load ST fires this for every
+    // message, and CHAT_CHANGED alone cannot cover mid-session re-renders.
+    await _renderAllBadgesForMessage(messageId);
+
+    // RULE DISPATCH: CHARACTER_MESSAGE_RENDERED rules are turn-scoped — only fire
+    // for the most recent AI message. Historical re-renders skip dispatch so rules
+    // don't fire repeatedly as the user scrolls or ST repaints old messages.
+    const stCtx = window.SillyTavern?.getContext?.();
+    const chat   = stCtx?.chat ?? [];
+    const lastAiId = chat.reduce((max, msg, idx) => (!msg.is_user ? idx : max), -1);
+    if (lastAiId < 0 || messageId !== lastAiId) return;
+
     const candidates = getEnabledRules(s).filter(r =>
         r.triggers?.some(t => t.type === 'event' && t.config?.event === 'CHARACTER_MESSAGE_RENDERED')
     );
     if (!candidates.length) return;
-    const stCtx = window.SillyTavern?.getContext?.();
-    // Triggeryze is turn-scoped — only fire for the last AI message in the chat.
-    // On page load ST fires CHARACTER_MESSAGE_RENDERED for every historical message;
-    // this guard ensures only the most recent completed turn triggers rules.
-    const chat = stCtx?.chat ?? [];
-    const lastAiId = chat.reduce((max, msg, idx) => (!msg.is_user ? idx : max), -1);
-    if (lastAiId < 0 || messageId !== lastAiId) return;
     setCurrentEvent('CHARACTER_MESSAGE_RENDERED');
     try {
         for (const rule of candidates) {

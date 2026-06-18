@@ -16,6 +16,7 @@
  * setBadge(messageId, state)           — 'unchanged' | 'thinking' | 'modified'
  * renderRuleBadges(messageId, defs)    — render top/bottom badge buttons for a message
  * clearRuleBadges(messageId)           — remove rule badge buttons from one message
+ * clearAllMessageBadges(messageId)     — remove every TRG badge type from one message (turn teardown)
  * removeAllBadges()                    — strip all TRG badges from DOM (called on disable)
  * reinjectAllBadges()                  — refresh status badges for all AI messages
  * injectInlineBadges(messageId, defs)  — strip and re-inject inline keyword badges
@@ -34,6 +35,7 @@
 import { extension_settings }                        from '../../../extensions.js';
 import { resolveLbQueryTokens }  from './triggers/lb-query.js';
 import { getTurnVarsSnapshot }   from './triggers/turn-vars.js';
+import { trgLog }                from './logger.js';
 
 const EXT_NAME = 'triggeryze';
 
@@ -126,15 +128,15 @@ function makeRuleBadgeButton(ruleId, messageId, label, color, clickAction) {
  * graph: true    → applies monospace/pre font to badges in either top or bottom position.
  */
 export function renderRuleBadges(messageId, defs) {
-    console.debug(`[TRG:badge] renderRuleBadges mesId=${messageId} defs=${defs?.length ?? 0}`, defs?.map(d => d.label));
+    trgLog('badge renderRuleBadges', { messageId, defs: defs?.length ?? 0 });
     const $mes = $(`.mes[mesid="${messageId}"]`);
-    if (!$mes.length) { console.debug(`[TRG:badge] renderRuleBadges → no .mes element for mesId=${messageId}`); return; }
+    if (!$mes.length) { trgLog('badge renderRuleBadges — no .mes element', { messageId }); return; }
     const stCtx = window.SillyTavern?.getContext?.();
-    if (stCtx?.chat?.[messageId]?.is_user) { console.debug('[TRG:badge] renderRuleBadges → user message, skip'); return; }
+    if (stCtx?.chat?.[messageId]?.is_user) { trgLog('badge renderRuleBadges — user message, skip'); return; }
 
     $mes.find('.trg-rule-badge').remove();
     $mes.find('.trg-bottom-badges').remove();
-    if (!defs?.length) { console.debug('[TRG:badge] renderRuleBadges → no defs, cleared only'); return; }
+    if (!defs?.length) { trgLog('badge renderRuleBadges — no defs, cleared only', { messageId }); return; }
 
     const snapshot = getTurnVarsSnapshot();
     const topItems = [];
@@ -193,6 +195,30 @@ export function clearRuleBadges(messageId) {
     $mes.find('.trg-bottom-badges').remove();
 }
 
+/**
+ * Atomically remove all TRG badge elements from a single AI message.
+ *
+ * This is the only badge teardown call needed at turn boundaries. All three
+ * badge types are handled in one place so no type can be silently missed:
+ *   .trg-badge          — status pill (unchanged / thinking / modified)
+ *   .trg-rule-badge     — top-row action buttons
+ *   .trg-bottom-badges  — bottom badge container and its buttons
+ *   .trg-inline-badge   — keyword spans wrapped inside .mes_text
+ *
+ * Called from engine.js on first token (to demolish the previous turn) and
+ * from the MESSAGE_SWIPED handler (to clear the outgoing variant before
+ * regeneration begins). Do NOT call this on the currently streaming message.
+ */
+export function clearAllMessageBadges(messageId) {
+    const $mes = $(`.mes[mesid="${messageId}"]`);
+    $mes.find('.trg-badge').remove();
+    $mes.find('.trg-rule-badge').remove();
+    $mes.find('.trg-bottom-badges').remove();
+    // Unwrap inline spans — replaceWith preserves their text content in the DOM.
+    const mesText = document.querySelector(`.mes[mesid="${messageId}"] .mes_text`);
+    if (mesText) stripInlineBadges(mesText);
+}
+
 export function reinjectAllBadges() {
     const stCtx = window.SillyTavern?.getContext?.();
     if (!stCtx?.chat) return;
@@ -217,12 +243,12 @@ export function startInlineBadgeRemovalWatcher() {
         }
     });
     _removalWatcher.observe(document.body, { childList: true, subtree: true });
-    console.debug('[TRG:badge] inline badge removal watcher started');
+    trgLog('badge inline removal watcher started');
 }
 export function stopInlineBadgeRemovalWatcher() {
     _removalWatcher?.disconnect();
     _removalWatcher = null;
-    console.debug('[TRG:badge] inline badge removal watcher stopped');
+    trgLog('badge inline removal watcher stopped');
 }
 
 // ─── Inline keyword badges (absorbed from inline-badge.js) ───────────────────
@@ -339,13 +365,13 @@ export async function buildResolvedPatterns(defs) {
 }
 
 export async function injectInlineBadges(messageId, defs) {
-    console.debug(`[TRG:badge] injectInlineBadges mesId=${messageId} defs=${defs?.length ?? 0}`);
-    if (!defs?.length) { console.debug('[TRG:badge] injectInlineBadges → no defs'); return; }
+    trgLog('badge injectInlineBadges', { messageId, defs: defs?.length ?? 0 });
+    if (!defs?.length) { trgLog('badge injectInlineBadges — no defs', { messageId }); return; }
     const mesText = document.querySelector(`.mes[mesid="${messageId}"] .mes_text`);
-    if (!mesText) { console.debug(`[TRG:badge] injectInlineBadges → no .mes_text for mesId=${messageId}`); return; }
+    if (!mesText) { trgLog('badge injectInlineBadges — no .mes_text', { messageId }); return; }
     stripInlineBadges(mesText);
     const patterns = await buildResolvedPatterns(defs);
-    console.debug(`[TRG:badge] injectInlineBadges mesId=${messageId} patterns=${patterns.length}`);
+    trgLog('badge injectInlineBadges patterns', { messageId, patterns: patterns.length });
     if (!patterns.length) return;
     // Re-query after async gap in case ST replaced the element.
     const liveEl = document.querySelector(`.mes[mesid="${messageId}"] .mes_text`) ?? mesText;
