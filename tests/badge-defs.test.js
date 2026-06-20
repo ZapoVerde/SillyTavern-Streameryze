@@ -131,6 +131,24 @@ describe('reinjectRuleBadges — badge defs routing', () => {
         expect(defs[0].clickAction).toBe('fire');
     });
 
+    it('graph: true flows through to def for top-style badge', () => {
+        vi.mocked(getSettings).mockReturnValue({ rules: [
+            makeRule('r1', 'badge', { style: 'top', label: 'Stats', color: '#ff0000', splitOn: '', clickAction: 'fire', graph: true }),
+        ]});
+        reinjectRuleBadges(0);
+        const [, defs] = vi.mocked(renderRuleBadges).mock.calls[0];
+        expect(defs[0].graph).toBe(true);
+    });
+
+    it('graph: true flows through to def for bottom-style badge', () => {
+        vi.mocked(getSettings).mockReturnValue({ rules: [
+            makeRule('r1', 'badge', { style: 'bottom', label: '{{layer_bars}}', color: '#8888ff', splitOn: '\\n', clickAction: 'fire', graph: true }),
+        ]});
+        reinjectRuleBadges(0);
+        const [, defs] = vi.mocked(renderRuleBadges).mock.calls[0];
+        expect(defs[0].graph).toBe(true);
+    });
+
     it('splitOn and clickAction flow through to defs', () => {
         vi.mocked(getSettings).mockReturnValue({ rules: [
             makeRule('r1', 'badge', { style: 'bottom', label: 'a', color: '#8888ff', splitOn: ',', clickAction: 'inject' }),

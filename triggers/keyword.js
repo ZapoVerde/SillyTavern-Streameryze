@@ -82,7 +82,7 @@ export const keywordTrigger = {
             try {
                 const re = parseRegexFromString(config.pattern) ?? new RegExp(config.pattern);
                 const m  = re.exec(text);
-                return m ? m[0] : null;
+                return m ? (m[1] ?? m[0]) : null;
             } catch { return null; }
         }
         // text mode (default)
@@ -164,7 +164,7 @@ export const keywordTrigger = {
             mode:          $el.find('.trg-kw-mode').val(),
             keywords:      $el.find('.trg-kw-input').val(),
             caseSensitive: $el.find('.trg-kw-cs').prop('checked'),
-            pattern:       $el.find('.trg-kw-pattern').val(),
+            pattern:       $el.find('.trg-kw-pattern').val().trim(),
             lbScope:       $el.find('.trg-kw-lb-scope').val(),
             lbBook:        $el.find('.trg-kw-lb-book').val(),
             lbEntry:       $el.find('.trg-kw-lb-entry').val(),

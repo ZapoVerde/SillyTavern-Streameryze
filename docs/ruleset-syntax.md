@@ -281,6 +281,7 @@ Renders a clickable button on AI messages. Never auto-fires. Label text → `{{k
 style          "top" | "bottom" | "inline"          default "top"
 label          string                                button label; supports {{varName}}; default "run"
 color          string                                hex color; default "#8888ff"
+graph          boolean                               top/bottom only: render badge in monospace font; default false
 split-on       string                                delimiter to split label into multiple buttons; use \\n for newline, , for comma
 keywords       string                                inline only: comma-separated keywords to wrap as clickable spans
 case-sensitive boolean                               inline only; default false
@@ -430,6 +431,28 @@ Example payload for triggering Personalyze background removal:
 {"image":"personalyze/{{keyword}}.png","dir":"exports","uuid":"{{dom_event_uuid}}"}
 ```
 
+### `load-image`
+
+**Stage: stream and postMessage (idempotent).** Attaches a pre-existing image to the message gallery. Fires at both stages; an idempotency check on `msg.extra.media` prevents adding the same path twice.
+
+```
+path      string    required; path to image file; supports {{vars}}
+var       string    save resolved path to this turn variable
+persist   boolean   save to chat file and emit MESSAGE_UPDATED; default true
+```
+
+### `toast`
+
+**Stage: stream and postMessage.** Pops a toastr notification in the SillyTavern UI.
+
+```
+message         string                                      required; notification body; supports {{vars}}
+title           string                                      notification heading; supports {{vars}}; optional
+level           "info" | "success" | "warning" | "error"   default "info"
+tap-to-dismiss  boolean                                     click the toast to dismiss; default false
+copy-on-click   boolean                                     click copies message to clipboard; default false
+```
+
 ---
 
 ## Template variables
@@ -466,7 +489,13 @@ Available in every `{{vars}}`-supporting field:
 
 `lb` args: all optional (empty = wildcard). `mode`: `first | last | rnd | all` (default: `all` for titles/keys/books, `first` for content; `rnd` picks one random item). `scope`: `active` (default) | `all` (every lorebook on disk) | `inactive`.
 
-`ps` args: `nameFilter` optional. Forms: `[identifier]` literal, `[Display Name]` literal, `glob*` pattern, bare turn-variable name. `mode`: `first | last | all`. Resolves postMessage only.
+`ps` args: `nameFilter` optional. Forms: `[identifier]` literal, `[Display Name]` literal, `glob*` pattern, bare turn-variable name. Prefix a pattern with `!` to exclude it: `[!chatHistory*]` passes everything except matching slots. Mixed inclusions and exclusions are supported — inclusions are tested first, then exclusions veto. `mode`: `first | last | all`. Resolves postMessage only.
+
+`{{psRows:[nameFilter]}}` supports an additional `:sub=` parameter to collapse matching rows into a single aggregate line: `:sub=[matchFilter]>label>sumFilter` replaces the first matching row with `label<TAB><total_chars>`. `sumFilter` may be a glob filter (e.g. `[chatHistory-*]`) or the special source `@oaiConvChars` (the windowed conversation character count from ST's itemizedPrompts snapshot).
+
+`{{psMaxNameLen:[nameFilter]}}` — returns the character length of the longest display name among matching slots. Use to drive `{{pad:N:}}` width in `{{mapLines}}` bodies so columns align regardless of slot names in the active preset.
+
+`{{psCharSum:[nameFilter]}}` — sums the character counts of all matching slots and emits the total as an integer. Use alongside `{{psRows:[!chatHistory*]}}` to add a rolled-up Chat History row with the real windowed character count.
 
 `{{uuid}}` — generates a fresh v4 UUID on every call. Use a compose action to generate it once and store it, then reference the variable everywhere else that needs the same ID.
 

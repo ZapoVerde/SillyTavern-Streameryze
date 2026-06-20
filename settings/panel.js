@@ -216,6 +216,10 @@ export async function addSettingsPanel() {
                 <tr><td><span class="trg-help-eg">{{psContent:mySlot}}</span></td><td>slot whose name is stored in turn variable <span class="trg-help-eg">mySlot</span></td></tr>
                 <tr><td><span class="trg-help-eg">{{psRows}}</span></td><td>all slots as tab-separated <em>identifier↦charCount</em> rows — use with {{mapLines}}</td></tr>
                 <tr><td><span class="trg-help-eg">{{psRows:[world*]}}</span></td><td>filtered subset as TSV rows (same filter syntax as psName/psContent)</td></tr>
+                <tr><td><span class="trg-help-eg">{{psRows:[!chatHistory*]}}</span></td><td>all slots <em>except</em> those matching the exclusion pattern</td></tr>
+                <tr><td><span class="trg-help-eg">{{psRows:[!chatHistory*]:sub=[chatHistory-*]>Chat History>@oaiConvChars}}</span></td><td>collapse matching rows into one aggregate row: <em>[matchFilter]&gt;label&gt;sumFilter</em>; use <em>@oaiConvChars</em> for windowed char count</td></tr>
+                <tr><td><span class="trg-help-eg">{{psMaxNameLen:[nameFilter]}}</span></td><td>length of the longest display name among matching slots — use with <em>{{pad:N:}}</em> for column alignment</td></tr>
+                <tr><td><span class="trg-help-eg">{{psCharSum:[nameFilter]}}</span></td><td>sum of character counts for matching slots, as an integer</td></tr>
             </table>
         </div>
         </div>

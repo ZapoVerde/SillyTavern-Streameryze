@@ -43,7 +43,7 @@ import { clearAllMessageBadges, ensureBadge, setBadge, renderRuleBadges, injectI
 import { evaluateTriggers, ruleHasStage }                                     from './engine/evaluate.js';
 import { stopPatchObserver, applyLivePatch, applyPrefetch, applyInlineBadgePatch, clearLivePatchState, highlightPendingKeyword, clearPendingHighlights } from './engine/live-patch.js';
 import { executeActions, applyEarlyActions, clearEarlyFired }                from './engine/execute.js';
-import { trgLog, trgPerf }                                                    from './logger.js';
+import { trgLog, trgPerf, trgDev }                                             from './logger.js';
 
 let _generationId    = 0;
 const _fired         = new Set();
@@ -252,6 +252,7 @@ export async function onMessageReceived(messageId) {
     setCurrentEvent('MESSAGE_RECEIVED');
     ensureBadge(messageId);
     const _enabledRules = getEnabledRules(s);
+    for (const rule of _enabledRules) trgDev(rule.devMode, `[turn start] rule json: ${JSON.stringify(rule, null, 2)}`);
     trgLog('badge onMessageReceived', { messageId, enabledRules: _enabledRules.length, ruleBadgeDefs: getRuleBadgeDefs(_enabledRules).length, inlineDefs: getInlineBadgeDefs(_enabledRules).length });
     renderRuleBadges(messageId, getRuleBadgeDefs(_enabledRules));
     injectInlineBadges(messageId, getInlineBadgeDefs(_enabledRules));

@@ -76,6 +76,7 @@ const TRIGGER_KEY_MAP = {
     'badge':          'badge',
     'probability':    'chance',
     'event':          'event',
+    'domEvent':       'domEvent',
 };
 const ACTION_KEY_MAP = {
     'stop':           'stop',
@@ -88,6 +89,7 @@ const ACTION_KEY_MAP = {
     'load-image':     'loadImage',
     'set-var':        'setStVar',
     'toast':          'toast',
+    'domEvent':       'domEvent',
 };
 
 // Reverse maps (internal → format) derived from above
@@ -151,6 +153,7 @@ const TRIGGER_CFG_I = {
     }),
     chance:        r => ({ chance: r.chance ?? 50 }),
     event:         r => ({ event: r.event ?? 'MESSAGE_RECEIVED' }),
+    domEvent:      r => ({ eventName: r.eventName ?? '' }),
 };
 
 const ACTION_CFG_I = {
@@ -211,6 +214,7 @@ const ACTION_CFG_I = {
         tapToDismiss: r['tap-to-dismiss'] ?? false,
         copyOnClick:  r['copy-on-click']  ?? false,
     }),
+    domEvent:      r => ({ eventName: r.eventName ?? '', payload: r.payload ?? '{}' }),
 };
 
 // ---------------------------------------------------------------------------
@@ -254,6 +258,7 @@ const TRIGGER_CFG_E = {
     },
     chance:       cfg => ({ chance: cfg.chance ?? 50 }),
     event:        cfg => ({ event: cfg.event ?? 'MESSAGE_RECEIVED' }),
+    domEvent:     cfg => ({ eventName: cfg.eventName ?? '' }),
 };
 
 const ACTION_CFG_E = {
@@ -317,6 +322,7 @@ const ACTION_CFG_E = {
         if (cfg.copyOnClick)  out['copy-on-click']  = true;
         return out;
     },
+    domEvent:     cfg => ({ eventName: cfg.eventName ?? '', payload: cfg.payload ?? '{}' }),
 };
 
 // ---------------------------------------------------------------------------
@@ -368,6 +374,7 @@ const TRIGGER_VALIDATORS = {
         }
         return true;
     },
+    domEvent:  (raw, w, rn) => _req(raw, 'eventName', 'domEvent', w, rn),
 };
 
 const ACTION_VALIDATORS = {
@@ -386,6 +393,7 @@ const ACTION_VALIDATORS = {
         return _req(raw, 'lorebook', 'update (lorebook)', w, rn) &&
                _req(raw, 'title',    'update (lorebook)', w, rn);
     },
+    domEvent:  (raw, w, rn) => _req(raw, 'eventName', 'domEvent', w, rn),
 };
 
 // ---------------------------------------------------------------------------

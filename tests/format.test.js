@@ -130,6 +130,19 @@ describe('importTrigger', () => {
         expect(t?.config.splitOn).toBe(',');
         expect(t?.config.clickAction).toBe('inject');
     });
+    it('translates domEvent trigger with eventName', () => {
+        const w = [];
+        const t = importTrigger({ type: 'domEvent', eventName: 'plz:rmbg-done' }, w);
+        expect(t?.type).toBe('domEvent');
+        expect(t?.config.eventName).toBe('plz:rmbg-done');
+        expect(w).toHaveLength(0);
+    });
+    it('domEvent: missing eventName → warn + null', () => {
+        const w = [];
+        const t = importTrigger({ type: 'domEvent' }, w, 'R1');
+        expect(t).toBeNull();
+        expect(w[0]).toContain('eventName');
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -202,6 +215,19 @@ describe('importAction', () => {
         const w = [];
         const a = importAction({ type: 'update', target: 'text', mode: 'replace-paragraph', value: 'x' }, w);
         expect(a?.config.mode).toBe('replaceParagraph');
+    });
+    it('translates domEvent action with eventName and payload', () => {
+        const w = [];
+        const a = importAction({ type: 'domEvent', eventName: 'plz:request-rmbg', payload: '{"uuid":"{{dom_event_uuid}}"}' }, w);
+        expect(a?.type).toBe('domEvent');
+        expect(a?.config).toMatchObject({ eventName: 'plz:request-rmbg', payload: '{"uuid":"{{dom_event_uuid}}"}' });
+        expect(w).toHaveLength(0);
+    });
+    it('domEvent action: missing eventName → warn + null', () => {
+        const w = [];
+        const a = importAction({ type: 'domEvent', payload: '{}' }, w, 'R1');
+        expect(a).toBeNull();
+        expect(w[0]).toContain('eventName');
     });
     it('warns on unknown action type', () => {
         const w = [];
@@ -557,6 +583,10 @@ describe('exportTrigger', () => {
         const out = exportTrigger({ type: 'keyword', config: { mode: 'text', keywords: 'x', caseSensitive: false }, note: 'why' });
         expect(out?.note).toBe('why');
     });
+    it('exports domEvent trigger with eventName', () => {
+        const out = exportTrigger({ type: 'domEvent', config: { eventName: 'plz:rmbg-done' } });
+        expect(out).toEqual({ type: 'domEvent', eventName: 'plz:rmbg-done' });
+    });
     it('returns null for unknown internal type', () => {
         expect(exportTrigger({ type: 'unknownType', config: {} })).toBeNull();
     });
@@ -596,6 +626,10 @@ describe('exportAction', () => {
         const out = exportAction({ type: 'update', config: { target: 'text', mode: 'replaceParagraph', value: 'x', outputVar: '', lorebook: '', title: '', keys: '', content: '' } });
         expect(out?.mode).toBe('replace-paragraph');
     });
+    it('exports domEvent action with eventName and payload', () => {
+        const out = exportAction({ type: 'domEvent', config: { eventName: 'plz:request-rmbg', payload: '{"uuid":"{{dom_event_uuid}}"}' } });
+        expect(out).toEqual({ type: 'domEvent', eventName: 'plz:request-rmbg', payload: '{"uuid":"{{dom_event_uuid}}"}' });
+    });
     it('exports stop with andContinue:true as { type: stop, continue: true }', () => {
         const out = exportAction({ type: 'stop', config: { andContinue: true } });
         expect(out).toEqual({ type: 'stop', continue: true });
@@ -624,6 +658,37 @@ describe('round-trip', () => {
         expect(exported.triggers[0]).toEqual({ type: 'keyword', keywords: '[DONE]' });
         expect(exported.actions[0]).toEqual({ type: 'stop' });
         expect(exported.actions[1]).toEqual({ type: 'replace', replacement: '' });
+    });
+
+    it('transform syntax in template string fields survives import→export unchanged', () => {
+        const transforms = {
+            replace:  '{{upper: {{keyword}}}}',
+            compose:  '{{trim: {{upper: {{opts}}}}}}',
+            prompt:   '{{lower: {{message}}}} and {{words: 20: {{paragraph}}}}',
+            command:  '/send {{cap: {{keyword}}}}',
+            value:    '{{default: none: {{myVar}}}}',
+            template: '{{join: , : {{items}}}}',
+        };
+        const json = JSON.stringify({
+            name: 'Transform round-trip',
+            triggers: [{ type: 'keyword', keywords: 'test' }],
+            actions: [
+                { type: 'replace',   replacement: transforms.replace },
+                { type: 'compose',   var: 'out', template: transforms.compose },
+                { type: 'call-llm',  prompt: transforms.prompt },
+                { type: 'slash-cmd', command: transforms.command },
+                { type: 'update',    target: 'text', value: transforms.value },
+                { type: 'update',    lorebook: 'MyLB', title: 'Entry', content: transforms.template },
+            ],
+        });
+        const { rule } = parseAndImport(json, id);
+        const exported = exportRule(rule);
+        expect(exported.actions[0].replacement).toBe(transforms.replace);
+        expect(exported.actions[1].template).toBe(transforms.compose);
+        expect(exported.actions[2].prompt).toBe(transforms.prompt);
+        expect(exported.actions[3].command).toBe(transforms.command);
+        expect(exported.actions[4].value).toBe(transforms.value);
+        expect(exported.actions[5].content).toBe(transforms.template);
     });
 
     it('a ruleset survives import→export', () => {

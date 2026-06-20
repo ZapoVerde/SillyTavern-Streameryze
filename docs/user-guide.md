@@ -370,6 +370,8 @@ Adds a clickable button to an AI message. The badge does not fire during normal 
 
 **Split** — if set, the resolved label is split on this character sequence and one badge is rendered per piece. Enter `\n` to split on newlines, `,` to split on commas, or any literal string. Leave empty for a single badge. This is the mechanism for producing multiple badges from a single LLM response stored in a variable.
 
+**Graph** — when enabled, the badge renders in a monospace font. Use this when the label is a stat block, a table row, or any fixed-width content where character alignment matters — for example a `layer_bars` variable that pads column values with spaces.
+
 **Click action** — what happens when the button is clicked:
 - **fire rule actions** — runs the rule's action list, with `{{keyword}}` set to the badge label
 - **inject to input** — pastes the badge label into the ST message input box without sending
@@ -568,6 +570,36 @@ Dispatches a `CustomEvent` on `document` with a configurable name and JSON paylo
 **Payload** — a JSON string. All values support `{{vars}}` interpolation. The parsed object is attached as the event's `detail`. If the JSON is malformed after interpolation, the raw string is wrapped in `{ raw: "..." }` so the event still fires.
 
 **Common use: trigger a Personalyze image job from a rule.** Set event name to `plz:request-rmbg`. Set payload to `{"image":"personalyze/{{keyword}}.png","dir":"exports","uuid":"{{dom_event_uuid}}"}`. A separate rule with a DOM event trigger on `plz:rmbg-done` can then react when the job completes.
+
+### Load image
+
+**Stage: stream and postMessage**
+
+Attaches a pre-existing image file to the message gallery without generating anything. Use this when you already have the image path and want to display it in a message — for example, an image produced by a Generate image action in an earlier rule and stored via **Save as**, or a static asset at a known path.
+
+**Path** — the file path of the image to attach. Supports all template variables. `{{keyword}}`, `{{varName}}`, and lorebook query tokens all resolve before the path is used.
+
+**Save as** — stores the resolved path in a turn variable for use by later actions.
+
+**Persist in chat** — when enabled, the image is saved to the chat file and reloads with it. When disabled, the image is shown in the current session only.
+
+The action fires at both stream and postMessage stages. An idempotency check prevents the same path from being added twice to the gallery if the rule fires at both stages.
+
+### Toast
+
+**Stage: stream and postMessage**
+
+Pops a toastr notification in the SillyTavern UI. Use this to surface rule activity to the user — confirming a background LLM call completed, signalling a variable was updated, or flagging an error condition.
+
+**Message** — the notification body. Required. Supports all template variables.
+
+**Title** — optional heading shown above the message. Supports template variables.
+
+**Level** — controls the notification style: `info` (blue), `success` (green), `warning` (orange), `error` (red). Defaults to `info`.
+
+**Click to dismiss** — when enabled, clicking the toast closes it immediately.
+
+**Click to copy** — when enabled, clicking the toast copies the message text to the clipboard.
 
 ---
 
@@ -892,6 +924,50 @@ The order of slots matches the PromptManager order — the same top-to-bottom se
 **Conditional on slot presence.** Combine with `{{if ... empty}}`: if `{{psContent:[slot_identifier]}}` is empty, a slot was absent and a fallback branch can run instead.
 
 **Full stack replay.** `{{psContent::all}}` produces the entire context in PromptManager order — every slot concatenated with blank-line separators. This is useful for analytics or summarisation side calls that need the full prompt.
+
+### Exclusion filters
+
+All PS tokens (`{{psName}}`, `{{psContent}}`, `{{psRows}}`, `{{psMaxNameLen}}`, `{{psCharSum}}`) accept exclusion patterns in the nameFilter by prefixing a pattern with `!`.
+
+```
+{{psRows:[!chatHistory*]}}        — all slots except those matching chatHistory*
+{{psMaxNameLen:[!chatHistory*]}}  — longest name length, excluding chat history slots
+```
+
+If only exclusion patterns are present, everything not excluded passes. Mixed inclusions and exclusions are supported — inclusions are applied first (identifier or display name), then exclusions veto.
+
+### `{{psRows}}` sub= parameter
+
+The `:sub=` parameter collapses a group of matching rows into a single aggregate line. Use it to show Chat History as one summary row rather than individual per-turn entries.
+
+```
+{{psRows:[!chatHistory*]:sub=[chatHistory-*]>Chat History>@oaiConvChars}}
+```
+
+The parameter form is `:sub=[matchFilter]>label>sumFilter`:
+- **matchFilter** — which rows to collapse (glob pattern)
+- **label** — the display name for the aggregate row
+- **sumFilter** — how to compute the character count: a glob filter like `[chatHistory*]` (sums raw character counts from matching slots) or `@oaiConvChars` (reads the windowed token-based count from ST's itemizedPrompts snapshot, multiplied by 4 for an approximate character count)
+
+Multiple `:sub=` parameters are allowed on a single `{{psRows}}` token.
+
+### `{{psMaxNameLen}}`
+
+Returns the character length of the longest display name among matching slots. Use it to drive `{{pad:N:}}` column width in `{{mapLines}}` bodies so columns stay aligned regardless of which slots are active in the current preset.
+
+```
+{{psMaxNameLen:[!chatHistory*]}}
+```
+
+A typical workflow: compose `name_pad` from `{{psMaxNameLen:[!chatHistory*]}}`, then use `{{pad:{{name_pad}}:{{.1}}}}` inside a `{{mapLines}}` body for fixed-width slot name columns.
+
+### `{{psCharSum}}`
+
+Sums the character counts of all matching slots and emits the total as a plain integer. Pair with `{{psRows:[!chatHistory*]}}` to add a separate Chat History aggregate row with the real windowed character count from `@oaiConvChars` alongside individual non-history slots.
+
+```
+{{psCharSum:[chatHistory*]}}    → "4782"
+```
 
 ---
 

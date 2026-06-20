@@ -53,9 +53,9 @@ Stage is an inherent property of the action type, determined by what the action 
 
 Within a single generation, a given rule fires at most once per stage (stream or postMessage). Deduplication resets at the start of every new turn. Triggeryze has no cross-turn memory.
 
-The dedup key is `{ruleId}:{stage}`, not the matched keyword. This is deliberate: it allows a stop rule and a replace rule that share a trigger keyword to both fire in the same turn — stop at stream stage, replace at postMessage stage. A common idiom is "stop and strip" — halting the stream on a sentinel and then removing it from the saved message. Deduplication by keyword alone would silently break this.
+The dedup key is `{ruleId}:{stage}`, not the matched keyword. This is deliberate: it allows a stop rule and a replace rule that share a trigger keyword to both fire in the same turn — stop at stream stage, replace at postMessage stage.
 
-**The dedup ceiling is fixed at 1 and is not configurable.** The system is deliberately designed so that loop constructs are unnecessary rather than suppressed. Iteration needs are covered by three existing mechanisms: `calls: "per-match"` on `call-llm` for per-occurrence processing, the postMessage fixed-point loop for sequential variable chains where a downstream rule picks up on the next pass, and explicit rule repetition when a bounded number of steps is required. Adding a `max-fires` field or a loop action type would increase reasoning complexity for every author — making "will this rule fire infinitely?" a question that cannot be answered by inspection alone. If a workflow cannot be expressed through the above mechanisms, that is a design signal that the workflow itself needs rethinking, not that the engine needs loops.
+**The dedup ceiling is fixed at 1 and is not configurable.**
 
 ---
 
@@ -69,25 +69,15 @@ This store is explicitly ephemeral. Anything that needs to survive across turns 
 
 ---
 
-## 6. Stop Does Not Clean Up After Itself
+## 6. Each Action Has One Responsibility
 
-The stop action halts the stream and does nothing else. The partial message is left exactly as the host wrote it — keyword included. This is correct behaviour, not a deficiency.
+An action does exactly one thing. Stop halts the stream. Replace mutates the committed message. They do not compose into each other or clean up after each other.
 
-Message cleanup is a separate concern handled by the replace action. Keeping them separate means each action does one thing and can be composed freely. A stop action that also mutated the message would be two responsibilities in one place.
-
-If a user wants "stop and strip", they create two rules.
+This is what makes them composable: a user who wants "stop and strip" creates two rules. A user who only wants one effect creates one rule. Combining responsibilities inside an action type would silently remove that choice.
 
 ---
 
-## 7. Replace Owns the Message Edit
-
-When a replace action fires, it is the sole writer to that message's text for that keyword. It updates the stored message and uses the host's normal save-and-notify pipeline to persist the change and signal that the message has been updated.
-
-Replace never bypasses the host's rendering layer. Code that patches the DOM directly is taking on a responsibility that belongs to ST and will break across ST updates.
-
----
-
-## 8. The Lorebook Trigger Observes; Lorebook Actions Act
+## 7. The Lorebook Trigger Observes; Lorebook Actions Act
 
 The lorebook keyword trigger reads keyword definitions from the active lorebooks at the start of each generation. It does not maintain its own keyword list and does not influence which entries activate — it only observes. The lorebook is the source of truth for what keywords matter; the trigger is a read-only consumer of that information. Any code that writes to a lorebook entry or influences WI scanning as a side effect of this trigger has broken this principle.
 
@@ -95,7 +85,7 @@ Lorebook *actions* are a separate concern and are full members of Triggeryze's d
 
 ---
 
-## 9. Actions Route to Capabilities They Do Not Own
+## 8. Actions Route to Capabilities They Do Not Own
 
 Each action type is a thin coordination layer over an ST capability. Stop wraps generation control. Replace wraps message mutation. Call LLM wraps quiet prompt dispatch. Image generation wraps ST's image pipeline. Lorebook entry wraps world information write. The action owns the wiring; it does not own the capability.
 
@@ -105,7 +95,7 @@ A new action type belongs in Triggeryze when the underlying capability already e
 
 ---
 
-## 10. Verbose Logging is the Diagnostic Protocol
+## 9. Verbose Logging is the Diagnostic Protocol
 
 Rules engines are opaque by default: when something does not fire — or fires unexpectedly — there is no visible trail. Verbose mode is the answer to "why did that happen?"
 
@@ -115,7 +105,7 @@ Verbose is off by default. Silent operation is correct operation when nothing is
 
 ---
 
-## 11. The Three Kinds of Code
+## 10. The Three Kinds of Code
 
 Every module in Triggeryze belongs to exactly one of three categories. Mixing them is a defect.
 
@@ -127,11 +117,11 @@ Utility modules that serve multiple registry entries do not belong to any of the
 
 ---
 
-## 12. Every Module is Self-Describing
+## 11. Every Module is Self-Describing
 
 Every source file opens with a structured preamble declaring its role, its public surface, and its contracts. This is not documentation — it is a forcing function. A module whose role cannot be stated clearly in a preamble has not been designed clearly enough to be implemented. Write the preamble first.
 
-The `@architectural-role` field must name one of the roles from Principle 11, or `IO` / `UI` for utility modules, followed by a one-line description of what the module specifically owns or does. A compound role (e.g. `IO Wrapper + Registry`) is a warning sign: the file is probably doing two things and should be two files.
+The `@architectural-role` field must name one of the roles from Principle 10, or `IO` / `UI` for utility modules, followed by a one-line description of what the module specifically owns or does. A compound role (e.g. `IO Wrapper + Registry`) is a warning sign: the file is probably doing two things and should be two files.
 
 The `@stamp` field records the UTC timestamp of the last intentional architectural change — not the last edit. It is updated when the role, API surface, or contracts change; not when logic inside an existing function changes.
 
@@ -156,7 +146,7 @@ The `@stamp` field records the UTC timestamp of the last intentional architectur
 
 ---
 
-## 13. One Registry Entry, One File — Registries Assemble, Not Implement
+## 12. One Registry Entry, One File — Registries Assemble, Not Implement
 
 Every action and trigger is a named, bounded unit before any code exists. The registry architecture makes this explicit: each entry has a type key, a declared stage, a config spec, and an execute function. These boundaries are the fault lines. They are not discovered when a file grows too large; they are given by the design.
 
@@ -168,7 +158,7 @@ Shared machinery that serves multiple registry entries — template interpolatio
 
 ---
 
-## 15. Every User-Facing String Field Resolves Variable References
+## 13. Every User-Facing String Field Resolves Variable References
 
 Every string field that a user may configure — labels, keywords, colors, prompts, template values, split delimiters — replaces `{{varName}}` tokens with the corresponding turn variable value before the field is used. This is not a per-field opt-in; it is a system-wide contract.
 
@@ -178,7 +168,7 @@ This principle means users can drive any string field from LLM output stored in 
 
 ---
 
-## 16. The Save Format Mirrors the UI
+## 14. The Save Format Mirrors the UI
 
 A user who can read the settings panel should be able to read a saved ruleset file without a translator. Type keys in the format are kebab-case renderings of the labels shown in the UI — `call-llm` not `sideCall`, `keyword` not `keywordMatch`. The format is the public surface; internal registry keys are an implementation detail that never appears in files the user touches.
 
@@ -190,9 +180,9 @@ The `note` field on rulesets, rules, triggers, and actions exists so that author
 
 ---
 
-## 14. Tests Cover Logic, Not the UI
+## 15. Tests Cover Logic, Not the UI
 
-The settings panel is scaffolding — it reads state into the DOM and writes DOM values back to state. It contains no logic (Principle 11). A test that validates DOM state is testing that the framework renders, not that Triggeryze is correct. There is nothing to unit-test in UI code, and adding tests there would only paper over a violation of Principle 11 if logic had migrated into the panel.
+The settings panel is scaffolding — it reads state into the DOM and writes DOM values back to state. It contains no logic (Principle 10). A test that validates DOM state is testing that the framework renders, not that Triggeryze is correct. There is nothing to unit-test in UI code, and adding tests there would only paper over a violation of Principle 11 if logic had migrated into the panel.
 
 What the test suite covers instead:
 

@@ -1,0 +1,383 @@
+# Triggeryze Feature Traceability Matrix
+#
+# LLM USAGE: When you touch any feature listed here, check every coverage item
+# for that feature. Update the `touched` date on each artifact you verify or
+# modify. A stale `touched` date relative to the others in the same feature is
+# a coverage gap — flag it to the user before closing the task.
+#
+# Coverage areas:
+#   test       — tests/ directory (unit / integration)
+#   syntax     — docs/ruleset-syntax.md (JSON format reference)
+#   user-guide — docs/user-guide.md (conceptual + UI walkthrough)
+#   cheatsheet — settings/panel.js, "Variables and functions cheatsheet" section
+#   export     — settings/format.js (import/export boundary)
+#
+# `cheatsheet` only applies to template-side features (variables, transforms,
+# lorebook/PS queries, math, conditionals, mapLines).
+# `export` only applies to triggers and actions (serialized fields).
+# Omitted key = not applicable for that feature.
+#
+# Special values:
+#   missing    — feature exists in engine but is absent from this artifact (gap)
+#   undocumented — present in code/tests but deliberately or accidentally absent
+#                  from user-facing docs; note explains which
+
+# ─── TRIGGERS ───────────────────────────────────────────────────────────────
+
+triggers:
+
+  - id: keyword-text
+    name: "keyword trigger — text mode"
+    notes: "fields: keywords, case-sensitive; wildcards * and ?"
+    coverage:
+      test:       { file: tests/triggers.test.js,   touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      export:     { file: settings/format.js,       touched: 2026-06-20 }
+
+  - id: keyword-lorebook
+    name: "keyword trigger — lorebook mode"
+    notes: "no extra fields; fires on any primary key from active lorebooks"
+    coverage:
+      test:       { file: tests/triggers.test.js,   touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      export:     { file: settings/format.js,       touched: 2026-06-20 }
+
+  - id: keyword-regex
+    name: "keyword trigger — regex mode"
+    notes: "field: pattern; /pattern/flags syntax; first capture group → {{keyword}}"
+    coverage:
+      test:       { file: tests/triggers.test.js,   touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      export:     { file: settings/format.js,       touched: 2026-06-20 }
+
+  - id: event-message-received
+    name: "event trigger — MESSAGE_RECEIVED"
+    notes: "fires once after AI message committed"
+    coverage:
+      test:       { file: tests/event-routing.test.js, touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,      touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,          touched: 2026-06-20 }
+      export:     { file: settings/format.js,          touched: 2026-06-20 }
+
+  - id: event-generation-started
+    name: "event trigger — GENERATION_STARTED"
+    notes: "fires at turn start before any tokens; use to reset variables"
+    coverage:
+      test:       { file: tests/event-routing.test.js, touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,      touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,          touched: 2026-06-20 }
+      export:     { file: settings/format.js,          touched: 2026-06-20 }
+
+  - id: event-message-rendered
+    name: "event trigger — CHARACTER_MESSAGE_RENDERED"
+    notes: "fires on every DOM render including chat reload; use with care"
+    coverage:
+      test:       { file: tests/event-routing.test.js, touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,      touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,          touched: 2026-06-20 }
+      export:     { file: settings/format.js,          touched: 2026-06-20 }
+
+  - id: var-match
+    name: "var-match trigger"
+    notes: "fields: var, operator, value; 7 operators including not-empty/set/not-set"
+    coverage:
+      test:       { file: tests/triggers.test.js,   touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      export:     { file: settings/format.js,       touched: 2026-06-20 }
+
+  - id: condition
+    name: "condition trigger"
+    notes: "field: expression; operators < > <= >= = != matches contains is empty in; chatvar::/globalvar:: prefixes"
+    coverage:
+      test:       { file: tests/triggers.test.js,   touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      export:     { file: settings/format.js,       touched: 2026-06-20 }
+
+  - id: badge-top
+    name: "badge trigger — top style"
+    notes: "fields: label, color, click (fire/inject/inject-send), graph; {{highlighted}} on click"
+    coverage:
+      test:       { file: tests/badge-defs.test.js, touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      export:     { file: settings/format.js,       touched: 2026-06-20 }
+
+  - id: badge-bottom
+    name: "badge trigger — bottom style"
+    notes: "fields: label, color, split-on, click, graph; split-on produces multiple badges"
+    coverage:
+      test:       { file: tests/badge-defs.test.js, touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      export:     { file: settings/format.js,       touched: 2026-06-20 }
+
+  - id: badge-inline
+    name: "badge trigger — inline style"
+    notes: "fields: keywords, color, case-sensitive, click; wraps matched words in message as clickable spans"
+    coverage:
+      test:       { file: tests/badge-defs.test.js, touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      export:     { file: settings/format.js,       touched: 2026-06-20 }
+
+  - id: badge-graph
+    name: "badge trigger — graph field"
+    notes: "top/bottom only; adds trg-graph CSS class for monospace font; imported and exported by format.js"
+    coverage:
+      test:       { file: tests/badge-defs.test.js, touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      export:     { file: settings/format.js,       touched: 2026-06-20 }
+
+  - id: probability
+    name: "probability trigger"
+    notes: "field: chance (0–100); combine with when:all to make any rule probabilistic"
+    coverage:
+      test:       { file: tests/triggers.test.js,   touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      export:     { file: settings/format.js,       touched: 2026-06-20 }
+
+  - id: domEvent-trigger
+    name: "domEvent trigger"
+    notes: "field: eventName; auto-unpacks detail into dom_event_* turn vars; import/export tests in format.test.js"
+    coverage:
+      test:       { file: tests/triggers.test.js,   touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      export:     { file: settings/format.js,       touched: 2026-06-20 }
+
+# ─── ACTIONS ────────────────────────────────────────────────────────────────
+
+actions:
+
+  - id: stop
+    name: "stop action"
+    notes: "field: continue (boolean); stage: stream; leaves keyword in message"
+    coverage:
+      test:       { file: tests/e2e.test.js,        touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      export:     { file: settings/format.js,       touched: 2026-06-20 }
+
+  - id: replace
+    name: "replace action"
+    notes: "field: replacement; stage: postMessage; blank replacement = delete"
+    coverage:
+      test:       { file: tests/replace.test.js,    touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      export:     { file: settings/format.js,       touched: 2026-06-20 }
+
+  - id: call-llm
+    name: "call-llm action"
+    notes: "fields: prompt, output (5 modes), calls (once/per-match), var, connection; stage: postMessage"
+    coverage:
+      test:       { file: tests/dispatch.test.js,   touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      export:     { file: settings/format.js,       touched: 2026-06-20 }
+
+  - id: compose
+    name: "compose action"
+    notes: "fields: var, template; stage: postMessage; no LLM call; publishes to turn store"
+    coverage:
+      test:       { file: tests/compose.test.js,    touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      export:     { file: settings/format.js,       touched: 2026-06-20 }
+
+  - id: slash-cmd
+    name: "slash-cmd action"
+    notes: "fields: command, var; stage: stream AND postMessage (both by default)"
+    coverage:
+      test:       { file: tests/slash-cmd.test.js,  touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      export:     { file: settings/format.js,       touched: 2026-06-20 }
+
+  - id: update-lorebook
+    name: "update action — lorebook target"
+    notes: "fields: target, lorebook, title, keys, content, var; creates or updates entry"
+    coverage:
+      test:       { file: tests/lorebook.test.js,   touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      export:     { file: settings/format.js,       touched: 2026-06-20 }
+
+  - id: update-text
+    name: "update action — text target"
+    notes: "fields: target, mode (4 modes), value, var; edits message text directly"
+    coverage:
+      test:       { file: tests/update-text.test.js, touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,    touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,        touched: 2026-06-20 }
+      export:     { file: settings/format.js,        touched: 2026-06-20 }
+
+  - id: image
+    name: "image (generate image) action"
+    notes: "fields: source, model, prompt, var, persist, comfy-url; stage: postMessage; runs in background"
+    coverage:
+      test:       { file: tests/e2e.test.js,        touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      export:     { file: settings/format.js,       touched: 2026-06-20 }
+
+  - id: set-var
+    name: "set-var action"
+    notes: "fields: scope (chat/global), var, key, value; persists across turns"
+    coverage:
+      test:       { file: tests/stvar.test.js,      touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      export:     { file: settings/format.js,       touched: 2026-06-20 }
+
+  - id: domEvent-action
+    name: "domEvent action (dispatch)"
+    notes: "fields: eventName, payload (JSON string with {{vars}}); stage: postMessage; invalid payload JSON falls back to { raw } detail"
+    coverage:
+      test:       { file: tests/domEvent-action.test.js, touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,        touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,            touched: 2026-06-20 }
+      export:     { file: settings/format.js,            touched: 2026-06-20 }
+
+  - id: load-image
+    name: "load-image action"
+    notes: "fields: path, var, persist; stage both; idempotency check on msg.extra.media prevents duplicate gallery entries"
+    coverage:
+      test:       { file: tests/load-image.test.js, touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      export:     { file: settings/format.js,       touched: 2026-06-20 }
+
+  - id: toast
+    name: "toast action"
+    notes: "fields: level, message, title, tap-to-dismiss, copy-on-click; stage stream+postMessage; empty message is a no-op; invalid level falls back to info"
+    coverage:
+      test:       { file: tests/toast.test.js,      touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      export:     { file: settings/format.js,       touched: 2026-06-20 }
+
+# ─── TEMPLATE VARIABLES ─────────────────────────────────────────────────────
+# No `export` column — these appear inside template strings, not as serialized fields.
+
+template-variables:
+
+  - id: system-vars
+    name: "system variables — {{keyword}}, {{up-to}}, {{paragraph}}, {{message}}"
+    notes: "always available; timing depends on which token is used (stream vs postMessage)"
+    coverage:
+      test:       { file: tests/template.test.js,   touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      cheatsheet: { file: settings/panel.js,        touched: 2026-06-20 }
+
+  - id: history-token
+    name: "{{history:[N]}} and filters (:user, :ai, :[Name], :[Glob*], :varName)"
+    notes: "N in brackets = literal; bare word = turn variable; filter counts matching messages not turn-pairs"
+    coverage:
+      test:       { file: tests/history-token.test.js, touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,      touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,          touched: 2026-06-20 }
+      cheatsheet: { file: settings/panel.js,           touched: 2026-06-20 }
+
+  - id: context-vars
+    name: "{{char}}, {{user}}, {{chat_id}}, {{highlighted}}"
+    notes: "{{highlighted}} only non-empty on badge click; char/user covered in compose.test.js; chat_id in template.test.js"
+    coverage:
+      test:       { file: tests/compose.test.js,    touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      cheatsheet: { file: settings/panel.js,        touched: 2026-06-20 }
+
+  - id: lb-query
+    name: "lorebook query tokens — {{lbContent}}, {{lbTitles}}, {{lbKeys}}, {{lbBooks}}"
+    notes: "5-arg filter: [lbname]:[titlename]:[keyname]:[mode]:[scope]; also usable in keyword fields"
+    coverage:
+      test:       { file: tests/lb-query.test.js,   touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      cheatsheet: { file: settings/panel.js,        touched: 2026-06-20 }
+
+  - id: ps-queries
+    name: "live prompt layer — {{psName}}, {{psContent}}, {{psRows}}"
+    notes: "postMessage only; sources from ST itemizedPrompts snapshot; basic form documented"
+    coverage:
+      test:       { file: tests/live-patch.test.js, touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      cheatsheet: { file: settings/panel.js,        touched: 2026-06-20 }
+
+  - id: ps-extended
+    name: "{{psMaxNameLen}}, {{psCharSum}}, {{psRows}} sub= parameter, {{psRows}} !exclusion filter"
+    notes: "extensions to the PS query system; !exclusion applies to all ps tokens; sub= collapses rows into an aggregate; psMaxNameLen drives pad: width; psCharSum gives integer totals"
+    coverage:
+      test:       { file: tests/live-patch.test.js, touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      cheatsheet: { file: settings/panel.js,        touched: 2026-06-20 }
+
+  - id: st-variables
+    name: "ST variables — {{chatvar::name}}, {{globalvar::name}} with .key / [key] access"
+    notes: "read in templates; written with set-var action; one level of property/index access"
+    coverage:
+      test:       { file: tests/stvar.test.js,      touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      cheatsheet: { file: settings/panel.js,        touched: 2026-06-20 }
+
+  - id: math
+    name: "{{math: expr}} with rand() and randint(N,M)"
+    notes: "evaluates after all variable substitution; returns empty on invalid input"
+    coverage:
+      test:       { file: tests/math-logic.test.js, touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      cheatsheet: { file: settings/panel.js,        touched: 2026-06-20 }
+
+  - id: uuid
+    name: "{{uuid}}"
+    notes: "new v4 UUID on every call; store once with compose if reuse needed"
+    coverage:
+      test:       { file: tests/template.test.js,   touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      cheatsheet: { file: settings/panel.js,        touched: 2026-06-20 }
+
+  - id: maplines
+    name: "{{mapLines: delimiter : source}} … {{/mapLines}}"
+    notes: "projects template body over tab/comma-separated rows; {{.1}} {{.2}} column refs"
+    coverage:
+      test:       { file: tests/map-lines.test.js,  touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      cheatsheet: { file: settings/panel.js,        touched: 2026-06-20 }
+
+  - id: conditionals
+    name: "{{if condition}} … {{/if}} blocks"
+    notes: "operators: matches/contains/is/in()/empty; AND OR ! (); non-nestable; numeric comparisons via chatvar::/globalvar::"
+    coverage:
+      test:       { file: tests/template.test.js,   touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      cheatsheet: { file: settings/panel.js,        touched: 2026-06-20 }
+
+# ─── TEMPLATE TRANSFORMS ────────────────────────────────────────────────────
+# No `export` column.
+
+transforms:
+
+  - id: string-transforms
+    name: "string transforms — trim, upper, lower, cap, len, lines, last, nth, words, chars, join, replace, default, bar, pick"
+    notes: "run after all variable substitution; inner {{varName}} resolves first; all 15 transforms confirmed in transforms.test.js TRANSFORM_PREFIXES test; format.test.js round-trip verifies transform syntax in template string fields survives import→export unchanged across all action types that carry template fields"
+    coverage:
+      test:       { file: tests/transforms.test.js, touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      cheatsheet: { file: settings/panel.js,        touched: 2026-06-20 }

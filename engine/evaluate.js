@@ -22,7 +22,7 @@
 
 import { TRIGGER_REGISTRY } from '../triggers.js';
 import { ACTION_REGISTRY }  from '../actions/index.js';
-import { trgWarn }          from '../logger.js';
+import { trgWarn, trgDev }  from '../logger.js';
 
 async function runTrigger(trigger, text) {
     const def = TRIGGER_REGISTRY[trigger.type];
@@ -33,14 +33,19 @@ async function runTrigger(trigger, text) {
 
 export async function evaluateTriggers(rule, text) {
     if (!rule.triggers?.length) return null;
+    const debug = rule.devMode ?? false;
+
+    trgDev(debug, `  evaluate "${rule.name ?? rule.id}" | text: ${JSON.stringify(text.slice(0, 200))}${text.length > 200 ? '…' : ''}`);
 
     if (rule.when === 'all') {
         const results = await Promise.all(rule.triggers.map(t => runTrigger(t, text)));
+        results.forEach((r, i) => trgDev(debug, `  trigger[${i}] (${rule.triggers[i].type}):`, r ?? 'no match'));
         return results.every(r => r !== null) ? (results.find(r => r !== null) ?? null) : null;
     }
 
-    for (const trigger of rule.triggers) {
-        const matched = await runTrigger(trigger, text);
+    for (let i = 0; i < rule.triggers.length; i++) {
+        const matched = await runTrigger(rule.triggers[i], text);
+        trgDev(debug, `  trigger[${i}] (${rule.triggers[i].type}):`, matched ?? 'no match');
         if (matched !== null) return matched;
     }
     return null;

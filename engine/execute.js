@@ -57,6 +57,7 @@ export async function executeActions(rule, stage, execCtx, getGenId) {
     const debug = rule.devMode ?? false;
 
     trgDev(debug, `── rule "${rule.name ?? rule.id}" | ${stage} | keyword="${execCtx.matchedKeyword}" ──`);
+    trgDev(debug, '  rule json:', JSON.stringify(rule, null, 2));
 
     const knownVars = new Set(stageActions.map(({ a }) => a.config?.outputVar).filter(Boolean));
     const varReady  = new Map();
