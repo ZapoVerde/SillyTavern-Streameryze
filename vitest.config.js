@@ -13,6 +13,30 @@ const __dirname = new URL('.', import.meta.url).pathname;
 export default defineConfig({
     test: {
         environment: 'node',
+        coverage: {
+            provider: 'v8',
+            include: [
+                'actions/**/*.js',
+                'engine/**/*.js',
+                'triggers/**/*.js',
+                'settings/**/*.js',
+                'arg-parser.js',
+                'badge.js',
+                'lorebookApi.js',
+            ],
+            exclude: [
+                'actions/var-legend.js',
+                'settings/panel.js',
+                'settings/profiles.js',
+                'triggers/test-drawer.js',
+                'engine.js',
+                'index.js',
+                'logger.js',
+                'imageGen.js',
+                'triggers/kw-preview.js',
+            ],
+            reporter: ['text', 'html'],
+        },
     },
     resolve: {
         alias: [
