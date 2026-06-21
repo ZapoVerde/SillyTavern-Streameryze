@@ -82,7 +82,8 @@ export async function addSettingsPanel() {
                 <tr><td><span class="trg-var-chip trg-var-chip-lb" style="pointer-events:none">{{lbContent...}}</span></td><td>lorebook query tokens</td></tr>
                 <tr><td><span class="trg-var-chip trg-var-chip-ps" style="pointer-events:none">{{psContent...}}</span></td><td>live prompt layer query tokens (postMessage only)</td></tr>
                 <tr><td><span class="trg-var-chip trg-var-chip-rule" style="pointer-events:none">{{myVar}}</span></td><td>variable from a prior action in <em>this</em> rule</td></tr>
-                <tr><td><span class="trg-var-chip trg-var-chip-global" style="pointer-events:none">{{theirVar}}</span></td><td>variable written by a different rule this turn</td></tr>
+                <tr><td><span class="trg-var-chip trg-var-chip-global" style="pointer-events:none">{{theirVar}}</span></td><td>variable from another rule in the same group</td></tr>
+                <tr><td><span class="trg-var-chip trg-var-chip-gvar" style="pointer-events:none">{{$shared}}</span></td><td>$ global — readable across all groups</td></tr>
             </table>
             <p style="margin-top:6px;margin-bottom:2px;font-weight:bold;opacity:.7">System variables</p>
             <table class="trg-ref-table">

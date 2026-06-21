@@ -10,16 +10,21 @@
 #   syntax     — docs/ruleset-syntax.md (JSON format reference)
 #   user-guide — docs/user-guide.md (conceptual + UI walkthrough)
 #   cheatsheet — settings/panel.js, "Variables and functions cheatsheet" section
+#   var-picker — actions/var-legend.js, inline chip legend rendered above action prompt fields
 #   export     — settings/format.js (import/export boundary)
 #   schema     — docs/triggers.schema.json (machine-readable format spec)
 #   examples   — docs/examples/ (importable example rulesets that use this feature)
 #
 # `cheatsheet` only applies to template-side features (variables, transforms,
 # lorebook/PS queries, math, conditionals, mapLines).
+# `var-picker` only applies to features that have dedicated chips in the inline
+# variable legend. Not every feature needs a chip.
 # `export` and `schema` only apply to triggers and actions (serialized fields).
-# `examples` applies to all features. A YAML flow sequence means multiple example
-# files cover the same feature — all must be reviewed when the feature changes.
-# Omitted key = not applicable for that feature.
+# `examples` — example files are optional for any feature. `missing` means no example
+# file currently exercises this feature; that is not a required gap. The entry must
+# be updated to list the file(s) when an example is added that covers the feature.
+# Omitted key = not applicable for that feature. A YAML flow sequence means multiple
+# example files cover it — all must be reviewed when the feature changes.
 #
 # Special values:
 #   missing    — feature exists in engine but is absent from this artifact (gap)
@@ -368,6 +373,23 @@ actions:
 
 template-variables:
 
+  - id: variable-scoping
+    name: "ruleset-scoped turn variables and $ global prefix"
+    notes: >
+      Turn variables are scoped to their ruleset by default; a name written in
+      ruleset A is invisible to rules in ruleset B. Prefixing a name with $ (e.g. $count)
+      makes it global — readable and writable across all rulesets. The rule card shows a
+      warning banner when action configs reference variables that exist in another ruleset
+      but lack the $ prefix. The variable picker omits out-of-scope names and shows
+      $ globals in a separate green-chip section.
+    coverage:
+      test:       { file: tests/turn-vars.test.js,  touched: 2026-06-21 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-21 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-21 }
+      cheatsheet: { file: settings/panel.js,        touched: 2026-06-21 }
+      var-picker: { file: actions/var-legend.js,    touched: 2026-06-21 }
+      examples:   { file: missing }
+
   - id: system-vars
     name: "system variables — {{keyword}}, {{up-to}}, {{paragraph}}, {{message}}"
     notes: "always available; timing depends on which token is used (stream vs postMessage)"
@@ -376,6 +398,7 @@ template-variables:
       syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
       user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
       cheatsheet: { file: settings/panel.js,        touched: 2026-06-20 }
+      var-picker: { file: actions/var-legend.js,    touched: 2026-06-21 }
       examples:   { file: [docs/examples/anti-slop.json, docs/examples/sentinel-stop-and-strip.json, docs/examples/hp-tracker.json], touched: 2026-06-21 }
 
   - id: history-token
@@ -390,6 +413,7 @@ template-variables:
       syntax:     { file: docs/ruleset-syntax.md,      touched: 2026-06-21 }
       user-guide: { file: docs/user-guide.md,          touched: 2026-06-21 }
       cheatsheet: { file: settings/panel.js,           touched: 2026-06-21 }
+      var-picker: { file: actions/var-legend.js,       touched: 2026-06-21 }
       examples:   { file: [docs/examples/continuation-badges.json, docs/examples/session-memory.json], touched: 2026-06-21 }
 
   - id: context-vars
@@ -400,6 +424,7 @@ template-variables:
       syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
       user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
       cheatsheet: { file: settings/panel.js,        touched: 2026-06-20 }
+      var-picker: { file: actions/var-legend.js,    touched: 2026-06-21 }
       examples:   { file: docs/examples/continuation-badges.json, touched: 2026-06-21 }
 
   - id: lb-query
@@ -413,6 +438,7 @@ template-variables:
       syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-21 }
       user-guide: { file: docs/user-guide.md,       touched: 2026-06-21 }
       cheatsheet: { file: settings/panel.js,        touched: 2026-06-21 }
+      var-picker: { file: actions/var-legend.js,    touched: 2026-06-21 }
       examples:   { file: missing }
 
   - id: ps-queries
@@ -427,6 +453,7 @@ template-variables:
       syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-21 }
       user-guide: { file: docs/user-guide.md,       touched: 2026-06-21 }
       cheatsheet: { file: settings/panel.js,        touched: 2026-06-21 }
+      var-picker: { file: actions/var-legend.js,    touched: 2026-06-21 }
       examples:   { file: docs/examples/context-visualizer.json, touched: 2026-06-21 }
 
   - id: ps-extended
@@ -443,6 +470,7 @@ template-variables:
       syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-21 }
       user-guide: { file: docs/user-guide.md,       touched: 2026-06-21 }
       cheatsheet: { file: settings/panel.js,        touched: 2026-06-21 }
+      var-picker: { file: missing }
       examples:   { file: docs/examples/context-visualizer.json, touched: 2026-06-21 }
 
   - id: st-variables
@@ -453,6 +481,7 @@ template-variables:
       syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
       user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
       cheatsheet: { file: settings/panel.js,        touched: 2026-06-20 }
+      var-picker: { file: missing }
       examples:   { file: [docs/examples/hp-tracker.json, docs/examples/narrator-mode.json], touched: 2026-06-21 }
 
   - id: math
@@ -463,6 +492,7 @@ template-variables:
       syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
       user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
       cheatsheet: { file: settings/panel.js,        touched: 2026-06-20 }
+      var-picker: { file: missing }
       examples:   { file: [docs/examples/hp-tracker.json, docs/examples/context-visualizer.json], touched: 2026-06-21 }
 
   - id: uuid
@@ -473,6 +503,7 @@ template-variables:
       syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
       user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
       cheatsheet: { file: settings/panel.js,        touched: 2026-06-20 }
+      var-picker: { file: missing }
       examples:   { file: missing }
 
   - id: maplines
@@ -483,6 +514,7 @@ template-variables:
       syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
       user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
       cheatsheet: { file: settings/panel.js,        touched: 2026-06-20 }
+      var-picker: { file: missing }
       examples:   { file: docs/examples/context-visualizer.json, touched: 2026-06-21 }
 
   - id: conditionals
@@ -493,6 +525,7 @@ template-variables:
       syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
       user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
       cheatsheet: { file: settings/panel.js,        touched: 2026-06-20 }
+      var-picker: { file: missing }
       examples:   { file: missing }
 
 # ─── TEMPLATE TRANSFORMS ────────────────────────────────────────────────────

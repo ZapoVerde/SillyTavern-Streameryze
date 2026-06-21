@@ -88,7 +88,7 @@ export const loadImage = {
         <label class="trg-sc-lbl">save as</label>
         <input type="text" class="trg-li-outvar text_pole trg-outvar-field" placeholder="variable name (optional)" value="${esc(config.outputVar ?? '')}" style="flex:1" />
     </div>
-    ${renderVarLegend(ctx?.priorActions, ctx?.crossRuleVars)}
+    ${renderVarLegend(ctx?.priorActions, ctx?.crossRuleVars, ctx?.globalVars)}
     <div class="trg-sc-row">
         <label class="trg-check-row">
             <input type="checkbox" class="trg-li-persist" ${(config.persist ?? true) ? 'checked' : ''} />

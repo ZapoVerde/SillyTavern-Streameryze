@@ -61,21 +61,31 @@ export const ACTION_REGISTRY = {
  * Builds the ctx object passed to renderConfig.
  * Enriches priorActions with the human-readable label from ACTION_REGISTRY so that
  * renderVarLegend can display it without importing ACTION_REGISTRY directly.
+ *
+ * crossRuleVars: non-$ outputVars from other rules in the same ruleset (ruleset-scoped vars).
+ * globalVars:    $-prefixed outputVars from any other rule (accessible across all rulesets).
  */
 export function makeActionCtx(rule, actionIdx, allRules = []) {
+    const rulesetId     = rule?._rulesetId;
     const priorVarNames = new Set(
         (rule?.actions ?? []).slice(0, actionIdx).map(a => a.config?.outputVar).filter(Boolean)
     );
+    const otherRules = allRules.filter(r => r.id !== rule?.id);
     return {
         priorActions: (rule?.actions ?? []).slice(0, actionIdx).map(a => ({
             ...a,
             label: ACTION_REGISTRY[a.type]?.label ?? a.type,
         })),
-        crossRuleVars: allRules
-            .filter(r => r.id !== rule?.id)
+        crossRuleVars: otherRules
+            .filter(r => r._rulesetId === rulesetId)
             .flatMap(r => (r.actions ?? [])
-                .filter(a => a.config?.outputVar && !priorVarNames.has(a.config.outputVar))
+                .filter(a => a.config?.outputVar && !a.config.outputVar.startsWith('$') && !priorVarNames.has(a.config.outputVar))
                 .map(a => ({ n: a.config.outputVar, h: `from rule: ${r.name || r.id}` }))
+            ),
+        globalVars: otherRules
+            .flatMap(r => (r.actions ?? [])
+                .filter(a => a.config?.outputVar?.startsWith('$') && !priorVarNames.has(a.config.outputVar))
+                .map(a => ({ n: a.config.outputVar, h: `global · ${r.name || r.id}` }))
             ),
     };
 }

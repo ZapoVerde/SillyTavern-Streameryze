@@ -205,7 +205,7 @@ export const sideCall = {
         <label class="trg-sc-lbl">save as</label>
         <input type="text" class="trg-cfg trg-sc-outvar trg-outvar-field" placeholder="variable name (optional)" value="${esc(config.outputVar ?? '')}" style="flex:1" />
     </div>
-    ${renderVarLegend(ctx?.priorActions, ctx?.crossRuleVars)}
+    ${renderVarLegend(ctx?.priorActions, ctx?.crossRuleVars, ctx?.globalVars)}
     <textarea class="text_pole trg-cfg trg-sc-prompt" rows="3"
         placeholder="Prompt — {{keyword}} {{up-to}} {{paragraph}} {{message}} {{history:[2]}} {{char}} {{user}}">${esc(config.prompt)}</textarea>
 </div>`);

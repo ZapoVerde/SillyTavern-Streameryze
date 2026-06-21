@@ -1,6 +1,6 @@
 /**
  * @file st-extensions/SillyTavern-Triggeryze/settings/rule-cards.js
- * @stamp {"utc":"2026-06-16T00:00:00.000Z"}
+ * @stamp {"utc":"2026-06-21T00:00:00.000Z"}
  * @architectural-role UI — ruleset and rule card rendering
  * @description
  * Renders the rule composer panel: ruleset group cards (collapsible, enable/disable),
@@ -15,7 +15,7 @@
  * @contract
  *   assertions:
  *     purity:          none — reads extension_settings, writes DOM
- *     state_ownership: [_expandedRulesets, _expandedRules, _expandedIngredients]
+ *     state_ownership: [_expandedRulesets, _expandedRules, _expandedIngredients, _dragging, per-card _lpTimer/_tDrag]
  *     external_io:     reinjectRuleBadges (engine), callPopup (ST), file download (downloadJson)
  */
 
@@ -54,8 +54,55 @@ export function expandOnCreate(type, id) {
     else                       _expandedIngredients.add(id);
 }
 
-// Active drag state — set in dragstart, cleared in dragend
+// Active drag state — set in dragstart/touch long-press, cleared in dragend/pointerup
 let _dragging = null; // { ruleId, rulesetId } | null
+
+// Shared reorder logic used by both mouse drop and touch drop.
+function _performDrop(src, dstRulesetId, dstRuleId, isAbove, rebuild) {
+    const s = getSettings();
+    const srcRs = s.rulesets.find(rs => rs.id === src.rulesetId);
+    if (!srcRs) return;
+    const srcIdx = srcRs.rules.findIndex(r => r.id === src.ruleId);
+    if (srcIdx === -1) return;
+    const [moved] = srcRs.rules.splice(srcIdx, 1);
+
+    const dstRs = s.rulesets.find(rs => rs.id === dstRulesetId);
+    if (!dstRs) { srcRs.rules.splice(srcIdx, 0, moved); return; }
+
+    const dstIdx   = dstRs.rules.findIndex(r => r.id === dstRuleId);
+    const insertAt = dstIdx === -1 ? dstRs.rules.length : (isAbove ? dstIdx : dstIdx + 1);
+    dstRs.rules.splice(insertAt, 0, moved);
+    rebuild();
+}
+
+function detectOutOfScopeVars(rule, rulesetId, allRulesets) {
+    const crossScopeNames = new Set();
+    for (const rs of allRulesets) {
+        if (rs.id === rulesetId) continue;
+        for (const r of (rs.rules ?? [])) {
+            for (const a of (r.actions ?? [])) {
+                const v = a.config?.outputVar;
+                if (v && !v.startsWith('$')) crossScopeNames.add(v);
+            }
+        }
+    }
+    if (!crossScopeNames.size) return [];
+
+    const referenced = new Set();
+    for (const a of (rule.actions ?? [])) {
+        const text = Object.values(a.config ?? {}).filter(v => typeof v === 'string').join(' ');
+        for (const m of text.matchAll(/\{\{([^{}]+)\}\}/g)) {
+            const name = m[1].trim();
+            if (!name.startsWith('$')) referenced.add(name);
+        }
+    }
+    for (const t of (rule.triggers ?? [])) {
+        if (t.type === 'varMatch' && t.config?.varName && !t.config.varName.startsWith('$'))
+            referenced.add(t.config.varName);
+    }
+
+    return [...referenced].filter(n => crossScopeNames.has(n));
+}
 
 function detectClobbers(rule) {
     const warnings = [];
@@ -203,7 +250,7 @@ function renderAddButton(label, registry, onPick) {
 function renderRuleCard(rule, ruleIdx, rsRules, allRules, save, rulesetId) {
     const rebuild = () => { save(); renderRules(save); };
 
-    const $card = $(`<div class="trg-rule-card${_expandedRules.has(rule.id) ? '' : ' trg-collapsed'}" data-rule-id="${rule.id}">`);
+    const $card = $(`<div class="trg-rule-card${_expandedRules.has(rule.id) ? '' : ' trg-collapsed'}" data-rule-id="${rule.id}" data-ruleset-id="${rulesetId}">`);
 
     // ── Header ──────────────────────────────────────────────────────────────
     const triggerSummary = (() => {
@@ -289,27 +336,125 @@ function renderRuleCard(rule, ruleIdx, rsRules, allRules, save, rulesetId) {
 
         const rect    = $card[0].getBoundingClientRect();
         const isAbove = e.originalEvent.clientY < rect.top + rect.height / 2;
+        _performDrop(src, rulesetId, rule.id, isAbove, rebuild);
+    });
 
-        const s     = getSettings();
-        const srcRs = s.rulesets.find(rs => rs.id === src.rulesetId);
-        if (!srcRs) return;
-        const srcIdx = srcRs.rules.findIndex(r => r.id === src.ruleId);
-        if (srcIdx === -1) return;
-        const [moved] = srcRs.rules.splice(srcIdx, 1);
+    // ── Touch / long-press DnD ────────────────────────────────────────────────
+    // Hold the handle for ~420 ms to lift the card into a draggable ghost.
+    // Uses Pointer Events so it works for touch and stylus without conflicting
+    // with the mouse path above (pointerType === 'mouse' is skipped here).
+    let _lpTimer = null;
+    let _tDrag   = null; // { pointerId, handleEl, startX, startY, curX, curY, cardLeft, cardTop, $ghost } | null
 
-        const dstRs = s.rulesets.find(rs => rs.id === rulesetId);
-        if (!dstRs) { srcRs.rules.splice(srcIdx, 0, moved); return; }
+    function _endTouch() {
+        if (_lpTimer) { clearTimeout(_lpTimer); _lpTimer = null; }
+        if (_tDrag?.$ghost) _tDrag.$ghost.remove();
+        if (_tDrag?.handleEl) $(_tDrag.handleEl).removeClass('trg-lp-pending');
+        $card.removeClass('trg-drag-source');
+        $('.trg-rule-card').removeClass('trg-drag-above trg-drag-below');
+        if (_tDrag) { _dragging = null; _tDrag = null; }
+    }
 
-        const dstIdx = dstRs.rules.findIndex(r => r.id === rule.id);
-        const insertAt = dstIdx === -1 ? dstRs.rules.length
-            : (isAbove ? dstIdx : dstIdx + 1);
-        // If same ruleset and moving downward, the splice above shifted indices
-        dstRs.rules.splice(insertAt, 0, moved);
-        rebuild();
+    $card.on('pointerdown', '.trg-drag-handle', e => {
+        if (e.originalEvent.pointerType === 'mouse') return;
+        e.preventDefault();
+        const pe = e.originalEvent;
+        const cardRect = $card[0].getBoundingClientRect();
+        _endTouch();
+        _tDrag = { pointerId: pe.pointerId, handleEl: e.currentTarget, startX: pe.clientX, startY: pe.clientY, curX: pe.clientX, curY: pe.clientY, cardLeft: cardRect.left, cardTop: cardRect.top, $ghost: null };
+        $(e.currentTarget).addClass('trg-lp-pending');
+
+        _lpTimer = setTimeout(() => {
+            _lpTimer = null;
+            if (!_tDrag) return;
+            _tDrag.handleEl.setPointerCapture(_tDrag.pointerId);
+            $(_tDrag.handleEl).removeClass('trg-lp-pending');
+            const dx = _tDrag.curX - _tDrag.startX;
+            const dy = _tDrag.curY - _tDrag.startY;
+            const $ghost = $card.clone()
+                .addClass('trg-drag-ghost')
+                .css({ width: cardRect.width, left: _tDrag.cardLeft + dx, top: _tDrag.cardTop + dy });
+            $('body').append($ghost);
+            _tDrag.$ghost = $ghost;
+            $card.addClass('trg-drag-source');
+            _dragging = { ruleId: rule.id, rulesetId };
+        }, 420);
+    });
+
+    $card.on('pointermove', e => {
+        if (!_tDrag || e.originalEvent.pointerId !== _tDrag.pointerId) return;
+        const pe = e.originalEvent;
+        _tDrag.curX = pe.clientX;
+        _tDrag.curY = pe.clientY;
+
+        if (!_tDrag.$ghost) {
+            // Cancel long-press if the finger slides (user is scrolling)
+            if (Math.abs(pe.clientX - _tDrag.startX) > 8 || Math.abs(pe.clientY - _tDrag.startY) > 8) {
+                clearTimeout(_lpTimer); _lpTimer = null;
+                $(_tDrag.handleEl).removeClass('trg-lp-pending');
+                _tDrag = null;
+            }
+            return;
+        }
+
+        e.preventDefault();
+        _tDrag.$ghost.css({ left: _tDrag.cardLeft + (pe.clientX - _tDrag.startX), top: _tDrag.cardTop + (pe.clientY - _tDrag.startY) });
+
+        // Find the card under the finger (hide ghost so it doesn't intercept)
+        _tDrag.$ghost[0].style.visibility = 'hidden';
+        const el = document.elementFromPoint(pe.clientX, pe.clientY);
+        _tDrag.$ghost[0].style.visibility = '';
+        $('.trg-rule-card').removeClass('trg-drag-above trg-drag-below');
+        if (el) {
+            const $t = $(el).closest('.trg-rule-card');
+            if ($t.length && $t[0] !== $card[0]) {
+                const tr  = $t[0].getBoundingClientRect();
+                const above = pe.clientY < tr.top + tr.height / 2;
+                $t.toggleClass('trg-drag-above', above).toggleClass('trg-drag-below', !above);
+            }
+        }
+    });
+
+    $card.on('pointerup pointercancel', e => {
+        if (!_tDrag || e.originalEvent.pointerId !== _tDrag.pointerId) return;
+        const pe        = e.originalEvent;
+        const wasActive = !!_tDrag.$ghost;
+        let $tgt = null, dropAbove = false;
+
+        if (wasActive && e.type === 'pointerup') {
+            _tDrag.$ghost[0].style.visibility = 'hidden';
+            const el = document.elementFromPoint(pe.clientX, pe.clientY);
+            if (el) {
+                const $found = $(el).closest('.trg-rule-card');
+                if ($found.length && $found[0] !== $card[0]) {
+                    $tgt      = $found;
+                    const tr  = $tgt[0].getBoundingClientRect();
+                    dropAbove = pe.clientY < tr.top + tr.height / 2;
+                }
+            }
+        }
+
+        _endTouch();
+
+        if ($tgt?.length) {
+            _performDrop(
+                { ruleId: rule.id, rulesetId },
+                $tgt.data('ruleset-id'),
+                $tgt.data('rule-id'),
+                dropAbove,
+                rebuild,
+            );
+        }
     });
 
     // ── Body ─────────────────────────────────────────────────────────────────
     const $body = $('<div class="trg-rule-body">');
+
+    const outOfScope = detectOutOfScopeVars(rule, rulesetId, getSettings().rulesets);
+    if (outOfScope.length) {
+        const names = outOfScope.map(n => `<code>${n}</code>`).join(', ');
+        $body.append($(`<div class="trg-scope-warn"><span class="trg-clobber-icon">&#9888;</span> ${names} — defined in another ruleset; add <code>$</code> prefix to share</div>`));
+    }
 
     // ── Toolbar: WHEN/OF selector + management buttons ────────────────────────
     const $toolbar = $(`
@@ -390,7 +535,7 @@ function renderRuleCard(rule, ruleIdx, rsRules, allRules, save, rulesetId) {
             ACTION_REGISTRY,
             (newConfig) => { rule.actions[aidx].config = newConfig; save(); },
             () => { rule.actions.splice(aidx, 1); rebuild(); },
-            makeActionCtx(rule, aidx, allRules),
+            makeActionCtx({ ...rule, _rulesetId: rulesetId }, aidx, allRules),
             `${rule.id}:a:${aidx}`,
             isFirst ? null : () => { const [a] = rule.actions.splice(aidx, 1); rule.actions.splice(aidx - 1, 0, a); rebuild(); },
             isLast  ? null : () => { const [a] = rule.actions.splice(aidx, 1); rule.actions.splice(aidx + 1, 0, a); rebuild(); },
@@ -526,7 +671,7 @@ function renderRulesetCard(ruleset, rsIdx, allRules, save) {
 export function renderRules(save) {
     const s        = getSettings();
     const rulesets = s.rulesets ?? [];
-    const allRules = rulesets.flatMap(rs => rs.rules ?? []);
+    const allRules = rulesets.flatMap(rs => (rs.rules ?? []).map(r => ({ ...r, _rulesetId: rs.id })));
     const $list    = $('#trg_rules_list').empty();
 
     if (!rulesets.length) {

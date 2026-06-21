@@ -45,7 +45,10 @@ export function getSettings() { return extension_settings[EXT_NAME]; }
 export function getEnabledRules(s) {
     return (s.rulesets ?? [])
         .filter(rs => rs.enabled !== false)
-        .flatMap(rs => (rs.rules ?? []).filter(r => r.enabled !== false));
+        .flatMap(rs => (rs.rules ?? [])
+            .filter(r => r.enabled !== false)
+            .map(r => ({ ...r, _rulesetId: rs.id }))
+        );
 }
 
 export function loadSettings() {

@@ -55,7 +55,7 @@ actions    action[]         required
 
 **Deduplication.** Each rule fires at most once per turn. `stop` and postMessage actions track dedup separately — this is what makes the stop-and-strip pattern work: two rules matching the same keyword, one halting the stream and one removing the keyword from the committed message.
 
-**Turn variables.** Set by `compose` (`var` field) and `call-llm` (`var` field). Shared across all rules in the same turn — any rule can read what an earlier-firing rule wrote. Cleared at the start of each new generation. Distinct from `chatvar::` / `globalvar::` ST variables, which persist across turns.
+**Turn variables.** Set by `compose` (`var` field) and `call-llm` (`var` field). Variables are **ruleset-scoped** by default — a variable written by a rule in one group is only visible to other rules in the same group. Prefix the name with `$` (e.g. `$emotion`) to make it global: global variables are readable and writable by rules in any group. Cleared at the start of each new generation. Distinct from `chatvar::` / `globalvar::` ST variables, which persist across turns.
 
 **Cross-rule ordering.** At postMessage stage, rule order in the list does not affect correctness. A `var-match` rule listed before its upstream producer resolves on the next loop pass. Write rules around what they detect, not where they sit in the list. `stop` and `slash-cmd` evaluate in list order during the stream.
 
@@ -67,7 +67,7 @@ Four stores are available. Choose by lifetime and content size:
 
 | Store | Lifetime | Best for |
 |---|---|---|
-| Turn variable | Current turn only | Intermediate results; routing data between rules in the same turn |
+| Turn variable | Current turn only | Intermediate results; routing within a group; prefix with `$` to share across groups |
 | `chatvar::` | Persistent, per-chat | Numeric state, flags, and strings scoped to one character or chat — HP, gold, mood |
 | `globalvar::` | Persistent, global | Settings and flags that apply across all chats — style preferences, feature toggles |
 | Lorebook entry | Persistent | Long-form text that needs keyword-driven context injection or `{{lbContent:…}}` lookup |
@@ -492,7 +492,8 @@ Available in every `{{vars}}`-supporting field:
 {{user}}                       user name
 {{chat_id}}                    current chat file name without extension — stable per-chat identifier
 {{highlighted}}                browser-selected text at badge click; empty for other triggers
-{{varName}}                    value of a turn variable named varName
+{{varName}}                    turn variable scoped to the current group
+{{$varName}}                   global turn variable — readable across all groups
 {{lbTitles:lb:title:key:mode:scope}}   comma-separated entry titles from lorebook query
 {{lbKeys:lb:title:key:mode:scope}}     comma-separated trigger keys from lorebook query
 {{lbContent:lb:title:key:mode:scope}}  entry body from lorebook query

@@ -12,7 +12,7 @@
  * building the ctx object passed to renderConfig.
  *
  * @api-declaration
- * renderVarLegend(priorActions) — returns HTML string for the variable chip legend
+ * renderVarLegend(priorActions, crossRuleVars, globalVars) — returns HTML string for the variable chip legend
  *
  * @contract
  *   assertions:
@@ -23,32 +23,29 @@
 
 import { esc } from './text.js';
 
-export function renderVarLegend(priorActions, crossRuleVars) {
+export function renderVarLegend(priorActions, crossRuleVars, globalVars) {
     const sys = [
         { n: 'keyword',     h: 'matched keyword' },
         { n: 'up-to',       h: 'text before keyword' },
         { n: 'message',     h: 'full message (postMessage)' },
         { n: 'paragraph',   h: 'paragraph containing keyword' },
-        { n: 'history:[2]',       h: 'last 2 turn-pairs of chat history — N can be a literal or a turn variable name' },
-        { n: 'history:[2]:user',  h: 'last 2 user messages; also :ai, :[Name], :[Glob*], or :varName to filter by speaker' },
+        { n: 'history:2',       h: 'last 2 turn-pairs of chat history — replace 2 with a literal count or {{varName}}' },
         { n: 'char',        h: 'character name' },
         { n: 'user',        h: 'user name' },
+        { n: 'chat_id',     h: 'current chat file name — stable per-chat identifier' },
         { n: 'highlighted', h: 'text selected when a badge button was clicked' },
     ];
     const lb = [
-        { n: 'lbContent:[lbName]:[lbTitle]:[lbTag]:[Mode(first, last, rnd, all)]:[Scope(active, inactive, all)]',
-          d: '{{lbContent:[lbName<b>*</b>]:[lbTitle<b>*</b>]:[lbTag<b>*</b>]:[Mode(first, last, rnd, <b>all</b>)]:[Scope(<b>active</b>, inactive, all)]}}',
-          h: 'lorebook entry content — filter by book/title/tag, mode: first|last|rnd|all, scope: active|inactive|all' },
+        { n: 'lbContent:*:*:*:all:active',
+          d: '{{lbContent:*:*:*:<b>all</b>:<b>active</b>}}',
+          h: 'lorebook entry content — args: lbname:title:tag:mode(first|last|rnd|all):scope(active|inactive|all); * matches any; bare text=literal, {{var}}=var ref' },
     ];
     const ps = [
-        { n: 'psName:[Preset_Name]:[mode(first, last, all)]',
-          d: '{{psName:[Preset_Name<b>*</b>]:[mode(first, last, <b>all</b>)]}}',
-          h: 'live prompt layer names matching filter — mode: first|last|all (postMessage only)' },
-        { n: 'psContent:[Preset_Name]:[mode(first, last, all)]',
-          d: '{{psContent:[Preset_Name<b>*</b>]:[mode(<b>first</b>, last, all)]}}',
-          h: 'live prompt layer content matching filter — mode: first|last|all (postMessage only)' },
+        { n: 'psContent:*:first',
+          d: '{{psContent:*:<b>first</b>}}',
+          h: 'live prompt layer content — args: name-filter:mode(first|last|all); * matches any; bare text=literal, {{var}}=var ref (postMessage only)' },
     ];
-    // Deduplicate rule vars (last write to a name wins) then strip from global any name already in rule
+    // Deduplicate rule vars (last write to a name wins) then strip from cross-rule/global any name already in rule
     const ruleDeduped  = Object.values(
         Object.fromEntries(
             (priorActions ?? [])
@@ -64,6 +61,14 @@ export function renderVarLegend(priorActions, crossRuleVars) {
                 .map(v => [v.n, v])
         )
     );
+    const shownNames   = new Set([...ruleNames, ...globalDeduped.map(v => v.n)]);
+    const gvarDeduped  = Object.values(
+        Object.fromEntries(
+            (globalVars ?? [])
+                .filter(v => !shownNames.has(v.n))
+                .map(v => [v.n, v])
+        )
+    );
 
     const chip = (v, cls) =>
         `<span class="trg-var-chip ${cls} trg-var-inject" data-token="{{${esc(v.n)}}}" title="${esc(v.h)}">${v.d ?? `{{${esc(v.n)}}}`}</span>`;
@@ -72,7 +77,8 @@ export function renderVarLegend(priorActions, crossRuleVars) {
     }<span class="trg-var-legend-sep"></span>${lb.map(v => chip(v, 'trg-var-chip-lb')).join('')
     }<span class="trg-var-legend-sep"></span>${ps.map(v => chip(v, 'trg-var-chip-ps')).join('')
     }${ruleDeduped.length   ? `<span class="trg-var-legend-sep"></span>${ruleDeduped.map(v => chip(v, 'trg-var-chip-rule')).join('')}`     : ''
-    }${globalDeduped.length ? `<span class="trg-var-legend-sep"></span>${globalDeduped.map(v => chip(v, 'trg-var-chip-global')).join('')}` : ''}</div>`;
+    }${globalDeduped.length ? `<span class="trg-var-legend-sep"></span>${globalDeduped.map(v => chip(v, 'trg-var-chip-global')).join('')}` : ''
+    }${gvarDeduped.length   ? `<span class="trg-var-legend-sep"></span>${gvarDeduped.map(v => chip(v, 'trg-var-chip-gvar')).join('')}`    : ''}</div>`;
     return `<div class="inline-drawer trg-var-legend-drawer">
 <div class="inline-drawer-toggle inline-drawer-header trg-var-legend-toggle">
     Clickable variables <div class="inline-drawer-icon fa-solid fa-circle-chevron-down"></div>

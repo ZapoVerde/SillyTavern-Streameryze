@@ -73,7 +73,7 @@ export const setStVar = {
         <label class="trg-sc-lbl">key</label>
         <input type="text" class="trg-cfg trg-stv-key" placeholder="optional — object key or array index (e.g. hp, 0)" value="${esc(config.key ?? '')}" style="flex:1" />
     </div>
-    ${renderVarLegend(ctx?.priorActions, ctx?.crossRuleVars)}
+    ${renderVarLegend(ctx?.priorActions, ctx?.crossRuleVars, ctx?.globalVars)}
     <textarea class="text_pole trg-cfg trg-stv-value" rows="3"
         placeholder="value — supports {{variables}}, {{chatvar::stats.hp}}, {{math: expr}}">${esc(config.value ?? '')}</textarea>
 </div>`);

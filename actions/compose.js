@@ -54,7 +54,7 @@ export const compose = {
         <label class="trg-sc-lbl">name</label>
         <input type="text" class="trg-cfg trg-cv-name trg-outvar-field" placeholder="variable name" value="${esc(config.outputVar ?? '')}" style="flex:1" />
     </div>
-    ${renderVarLegend(ctx?.priorActions, ctx?.crossRuleVars)}
+    ${renderVarLegend(ctx?.priorActions, ctx?.crossRuleVars, ctx?.globalVars)}
     <textarea class="text_pole trg-cfg trg-cv-template" rows="3"
         placeholder="{{if keyword matches &quot;breath|hitch&quot;}}Forced Physical Reaction Cliché&#10;{{/if}}{{if keyword is &quot;stone&quot;}}Purple Prose Metaphor&#10;{{/if}}">${esc(config.template ?? '')}</textarea>
 <div class="trg-kw-footer">

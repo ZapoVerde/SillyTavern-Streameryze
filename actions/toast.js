@@ -67,7 +67,7 @@ export const toast = {
         <label class="trg-sc-lbl">title</label>
         <input type="text" class="trg-cfg trg-toast-title text_pole" placeholder="optional — supports {{variables}}" value="${esc(config.title ?? '')}" style="flex:1" />
     </div>
-    ${renderVarLegend(ctx?.priorActions, ctx?.crossRuleVars)}
+    ${renderVarLegend(ctx?.priorActions, ctx?.crossRuleVars, ctx?.globalVars)}
     <input type="text" class="trg-cfg trg-toast-message text_pole" placeholder="message — supports {{variables}}" value="${esc(config.message ?? '')}" style="margin-top:4px" />
     <label class="trg-check-row" style="margin-top:6px">
         <input type="checkbox" class="trg-toast-tap" ${config.tapToDismiss ? 'checked' : ''} />

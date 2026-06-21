@@ -55,7 +55,7 @@ export const domEvent = {
             value="${esc(config.eventName ?? '')}"
             style="flex:1;font-size:.85em" />
     </div>
-    ${renderVarLegend(ctx?.priorActions, ctx?.crossRuleVars)}
+    ${renderVarLegend(ctx?.priorActions, ctx?.crossRuleVars, ctx?.globalVars)}
     <textarea class="trg-dom-act-payload text_pole" rows="4"
         placeholder='{"image":"personalyze/{{keyword}}.png","dir":"exports","uuid":"{{dom_event_uuid}}"}'
         >${esc(config.payload ?? '{}')}</textarea>

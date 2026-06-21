@@ -53,7 +53,7 @@ export async function executeActions(rule, stage, execCtx, getGenId) {
 
     const capturedGenId       = getGenId();
     const isCurrentGeneration = () => getGenId() === capturedGenId;
-    const vars  = { ...getTurnVarsSnapshot(), highlighted: execCtx.highlighted ?? '', 'chat_id': execCtx.stCtx?.chatId ?? '' };
+    const vars  = { ...getTurnVarsSnapshot(rule._rulesetId), highlighted: execCtx.highlighted ?? '', 'chat_id': execCtx.stCtx?.chatId ?? '' };
     const debug = rule.devMode ?? false;
 
     trgDev(debug, `── rule "${rule.name ?? rule.id}" | ${stage} | keyword="${execCtx.matchedKeyword}" ──`);
@@ -80,7 +80,7 @@ export async function executeActions(rule, stage, execCtx, getGenId) {
         if (_earlyFired.has(earlyKey)) {
             trgDev(debug, `  [${idx}] ${a.type} skipped (early-fired)`);
             if (a.config?.outputVar) {
-                const recovered = getTurnVar(a.config.outputVar);
+                const recovered = getTurnVar(a.config.outputVar, rule._rulesetId);
                 if (recovered !== undefined) vars[a.config.outputVar] = recovered;
                 varReady.get(a.config.outputVar)?.resolve();
             }
@@ -97,7 +97,7 @@ export async function executeActions(rule, stage, execCtx, getGenId) {
         } finally {
             trgDev(debug, `  [${idx}] ${a.type} done | vars:`, { ...vars });
             if (a.config?.outputVar) {
-                if (a.config.outputVar in vars) setTurnVar(a.config.outputVar, vars[a.config.outputVar]);
+                if (a.config.outputVar in vars) setTurnVar(a.config.outputVar, vars[a.config.outputVar], rule._rulesetId);
                 varReady.get(a.config.outputVar)?.resolve();
             }
         }

@@ -196,7 +196,11 @@ The feature set builds in layers. You do not need to reach for a higher layer un
 
 ## Groups
 
-Rules are organized into named groups. Groups are purely organizational — the engine's fixed-point loop resolves variable dependencies across all groups regardless of arrangement, so groups can be freely rearranged without affecting how rules interact.
+Rules are organized into named groups. Groups serve two purposes: organization and variable scoping.
+
+**Variable scoping.** Turn variables written by a rule are visible only to other rules in the same group by default. This prevents name collisions when groups grow independently. To share a variable across groups, prefix its name with `$` — for example `$emotion` instead of `emotion`. Global variables are readable and writable by rules in any group. The variable picker inside each action shows group-local variables in amber and `$` globals in green; variables from other groups are excluded from the picker entirely. If a rule references a variable that exists in another group but lacks the `$` prefix, a warning appears at the top of the rule card.
+
+Rules within a group can be freely reordered without affecting correctness — the fixed-point loop re-evaluates until no new rules fire, so a rule that reads a variable written by a later-listed rule will catch the value on the next pass.
 
 Click **Add group** to create a new group. Newly created groups appear below the existing ones.
 

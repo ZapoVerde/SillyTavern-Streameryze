@@ -100,6 +100,7 @@
 .trg-var-chip-ps     { background:rgba(80,200,160,.1); border-color:rgba(80,200,160,.38); color:#4ca; opacity:.65; }
 .trg-var-chip-rule   { background:rgba(220,160,50,.15); border-color:rgba(220,160,50,.5); color:#d4a830; }
 .trg-var-chip-global { background:rgba(140,100,220,.12); border-color:rgba(140,100,220,.4); color:#a87ee8; opacity:.7; }
+.trg-var-chip-gvar   { background:rgba(80,200,120,.12);  border-color:rgba(80,200,120,.4);  color:#5bc87a; }
 .trg-var-legend-sep  { width:1px; height:14px; background:rgba(255,255,255,.15); flex-shrink:0; margin:0 2px; align-self:center; }
 /* Paste-JSON import modal */
 .trg-paste-modal   { position:fixed; top:0; left:0; width:100vw; height:100dvh; background:rgba(0,0,0,.65); z-index:9000; display:flex; align-items:center; justify-content:center; overflow:hidden; pointer-events:all; }
@@ -142,6 +143,7 @@
 .trg-inline-badge       { display:inline; padding:1px 5px; border-radius:8px; border:1px solid; cursor:pointer; user-select:none; transition:opacity .15s, filter .15s; vertical-align:baseline; }
 .trg-inline-badge:hover { filter:brightness(1.3); opacity:1; }
 /* Clobbering warning */
+.trg-scope-warn      { margin-top:4px; margin-bottom:2px; padding:5px 8px; background:rgba(200,80,80,.1); border-left:3px solid rgba(200,80,80,.5); border-radius:3px; font-size:.8em; }
 .trg-clobber-warn    { margin-top:6px; padding:5px 8px; background:rgba(220,150,0,.1); border-left:3px solid rgba(220,150,0,.55); border-radius:3px; font-size:.8em; display:flex; flex-direction:column; gap:2px; }
 .trg-clobber-icon    { opacity:.75; }
 /* Ruleset card */
@@ -154,6 +156,25 @@
 .trg-rule-card.trg-drag-above  { border-top:2px solid rgba(140,160,255,.8) !important; }
 .trg-rule-card.trg-drag-below  { border-bottom:2px solid rgba(140,160,255,.8) !important; }
 .trg-ruleset-body.trg-drag-target { outline:1px dashed rgba(140,160,255,.45); outline-offset:3px; border-radius:4px; }
+/* Touch long-press charge — handle pulses while waiting for drag to activate */
+@keyframes trg-lp-charge {
+    0%   { opacity:.2; transform:scale(1); }
+    70%  { opacity:.9; transform:scale(1.5); }
+    100% { opacity:1;  transform:scale(1.3); }
+}
+.trg-drag-handle.trg-lp-pending { animation:trg-lp-charge 0.42s ease forwards; }
+/* Touch drag ghost — fixed clone that follows the finger */
+.trg-drag-ghost {
+    position:fixed !important;
+    z-index:9999;
+    pointer-events:none;
+    opacity:.88;
+    transform:scale(1.03);
+    box-shadow:0 10px 32px rgba(0,0,0,.55);
+    border-radius:6px;
+    margin:0 !important;
+    transition:none !important;
+}
 /* Keyword test drawer */
 .trg-kw-test-drawer      { margin-top:6px; border-top:1px solid rgba(255,255,255,.07); padding-top:5px; }
 .trg-kw-test-toggle      { background:none; border:none; cursor:pointer; font-size:.78em; opacity:.4; color:inherit; padding:0; display:flex; align-items:center; gap:4px; transition:opacity .15s; }
