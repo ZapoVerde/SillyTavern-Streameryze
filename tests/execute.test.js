@@ -123,7 +123,7 @@ describe('executeActions', () => {
         };
         const action = makeAction('act', { outputVar: 'myVar' });
         await executeActions(makeRule([action]), 'postMessage', execCtx, genId);
-        expect(setTurnVar).toHaveBeenCalledWith('myVar', 'result');
+        expect(setTurnVar).toHaveBeenCalledWith('myVar', 'result', undefined);
     });
 
     it('skips outputVar setTurnVar when the action does not write the var', async () => {

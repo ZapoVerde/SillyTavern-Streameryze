@@ -75,7 +75,7 @@ function _performDrop(src, dstRulesetId, dstRuleId, isAbove, rebuild) {
     rebuild();
 }
 
-function detectOutOfScopeVars(rule, rulesetId, allRulesets) {
+export function detectOutOfScopeVars(rule, rulesetId, allRulesets) {
     const crossScopeNames = new Set();
     for (const rs of allRulesets) {
         if (rs.id === rulesetId) continue;
