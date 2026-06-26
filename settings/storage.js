@@ -32,7 +32,6 @@ const EXT_NAME = 'triggeryze';
 const DEFAULTS = {
     enabled:     true,
     verbose:     false,
-    nonStreaming: false,
     showBadges:  true,
     rulesets:    [],
 };

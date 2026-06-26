@@ -378,6 +378,40 @@ describe('resolveTransforms — {{replace: find: with:}}', () => {
 });
 
 // ---------------------------------------------------------------------------
+// resolveTransforms — {{match: /pattern/flags:}}
+// ---------------------------------------------------------------------------
+
+describe('resolveTransforms — {{match: /pattern/flags: val}}', () => {
+    it('returns the full match when there are no capture groups', () => {
+        expect(resolveTransforms('{{match: /\\d+/: abc 42 xyz}}')).toBe('42');
+    });
+
+    it('returns capture group 1 when the pattern has a group', () => {
+        expect(resolveTransforms('{{match: /(\\w+)@/: user@example.com}}')).toBe('user');
+    });
+
+    it('returns empty string when there is no match', () => {
+        expect(resolveTransforms('{{match: /\\d+/: no digits here}}')).toBe('');
+    });
+
+    it('honours flags — case-insensitive match', () => {
+        expect(resolveTransforms('{{match: /hello/i: Say Hello world}}')).toBe('Hello');
+    });
+
+    it('handles colons inside the regex pattern without confusion', () => {
+        expect(resolveTransforms('{{match: /\\d+:\\d+/: time 12:30 end}}')).toBe('12:30');
+    });
+
+    it('returns empty string for a bad pattern without throwing', () => {
+        expect(resolveTransforms('{{match: /[invalid/: some text}}')).toBe('');
+    });
+
+    it('resolves against an interpolated variable value', () => {
+        expect(interpolate('{{match: /^\\w+/: {{response}}}}', { response: 'YES because reasons' })).toBe('YES');
+    });
+});
+
+// ---------------------------------------------------------------------------
 // resolveTransforms — {{bar: value : bucketSize : max}}
 // ---------------------------------------------------------------------------
 
@@ -514,28 +548,28 @@ describe('resolveTransforms — {{pick: N:}}', () => {
 // ---------------------------------------------------------------------------
 
 describe('resolveTransforms — {{hideFromUser:}}', () => {
-    it('wraps content in a trg-hide-user span', () => {
-        expect(resolveTransforms('{{hideFromUser: secret}}')).toBe('<span class="trg-hide-user">secret</span>');
+    it('wraps content in a classless details spoiler', () => {
+        expect(resolveTransforms('{{hideFromUser: secret}}')).toBe('<details><summary>▸</summary>secret</details>');
     });
 
     it('trims leading whitespace from the value', () => {
-        expect(resolveTransforms('{{hideFromUser:no-space}}')).toBe('<span class="trg-hide-user">no-space</span>');
+        expect(resolveTransforms('{{hideFromUser:no-space}}')).toBe('<details><summary>▸</summary>no-space</details>');
     });
 
     it('wraps multiline content', () => {
-        expect(resolveTransforms('{{hideFromUser: line1\nline2}}')).toBe('<span class="trg-hide-user">line1\nline2</span>');
+        expect(resolveTransforms('{{hideFromUser: line1\nline2}}')).toBe('<details><summary>▸</summary>line1\nline2</details>');
     });
 
-    it('wraps an empty value in an empty span', () => {
-        expect(resolveTransforms('{{hideFromUser:}}')).toBe('<span class="trg-hide-user"></span>');
+    it('wraps an empty value', () => {
+        expect(resolveTransforms('{{hideFromUser:}}')).toBe('<details><summary>▸</summary></details>');
     });
 
     it('preserves surrounding text', () => {
-        expect(resolveTransforms('before {{hideFromUser: x}} after')).toBe('before <span class="trg-hide-user">x</span> after');
+        expect(resolveTransforms('before {{hideFromUser: x}} after')).toBe('before <details><summary>▸</summary>x</details> after');
     });
 
     it('resolves through interpolate() after variable substitution', () => {
-        expect(interpolate('{{hideFromUser: {{note}}}}', { note: 'hint' })).toBe('<span class="trg-hide-user">hint</span>');
+        expect(interpolate('{{hideFromUser: {{note}}}}', { note: 'hint' })).toBe('<details><summary>▸</summary>hint</details>');
     });
 });
 
@@ -544,10 +578,10 @@ describe('resolveTransforms — {{hideFromUser:}}', () => {
 // ---------------------------------------------------------------------------
 
 describe('TRANSFORM_PREFIXES', () => {
-    it('includes all seventeen transform names', () => {
+    it('includes all eighteen transform names', () => {
         const required = [
             'trim:', 'upper:', 'lower:', 'lines:', 'words:', 'default:',
-            'chars:', 'last:', 'nth:', 'cap:', 'len:', 'join:', 'replace:', 'bar:', 'pad:', 'pick:',
+            'chars:', 'last:', 'nth:', 'cap:', 'len:', 'join:', 'replace:', 'match:', 'bar:', 'pad:', 'pick:',
             'hideFromUser:',
         ];
         for (const p of required) {

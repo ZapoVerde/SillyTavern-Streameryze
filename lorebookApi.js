@@ -18,6 +18,7 @@
  */
 
 import { getRequestHeaders, eventSource, event_types } from '../../../../script.js';
+import { worldInfoCache } from '../../../../scripts/world-info.js';
 
 export async function lbGetLorebook(name) {
     const res = await fetch('/api/worldinfo/get', {
@@ -36,5 +37,6 @@ export async function lbSaveLorebook(name, data) {
         body:    JSON.stringify({ name, data }),
     });
     if (!res.ok) throw new Error(`Lorebook save failed (HTTP ${res.status})`);
+    worldInfoCache.set(name, data);
     await eventSource.emit(event_types.WORLDINFO_UPDATED, name, data);
 }

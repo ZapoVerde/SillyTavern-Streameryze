@@ -1,6 +1,6 @@
 /**
  * @file st-extensions/SillyTavern-Triggeryze/engine.js
- * @stamp {"utc":"2026-06-20T00:00:00.000Z"}
+ * @stamp {"utc":"2026-06-26T00:00:00.000Z"}
  * @architectural-role Engine — rule dispatch orchestrator
  * @description
  * Owns per-generation dedup state and routes GENERATION_STARTED / STREAM_TOKEN_RECEIVED /
@@ -23,6 +23,7 @@
  * onMessageReceived(messageId)          — postMessage-stage rule loop (with recheck)
  * onCharacterMessageRendered(messageId) — badge rebuild + event:CHARACTER_MESSAGE_RENDERED rule dispatch
  * fireRuleManually(ruleId, msgId, highlighted, forcedMatchedKw?) — badge-triggered manual rule execution
+ * cancelCurrentOperations()             — invalidate in-flight actions (called by clicking a thinking badge)
  * reinjectRuleBadges(messageId?)        — render or refresh rule badge buttons
  * reinjectInlineBadges(messageId?)      — inject or refresh inline keyword badge spans
  *
@@ -94,6 +95,11 @@ function getInlineBadgeDefs(rules) {
             if (cfg.useRegex) { def.useRegex = true; def.pattern = cfg.pattern ?? ''; }
             return def;
         });
+}
+
+export function cancelCurrentOperations() {
+    _generationId++;
+    trgLog('operations cancelled — generation id bumped', { _generationId });
 }
 
 export async function fireRuleManually(ruleId, messageId, highlighted = '', forcedMatchedKw = null) {
@@ -237,9 +243,10 @@ export async function onMessageReceived(messageId) {
     const tPostMsg        = performance.now();
     let rulesFired = 0;
     let anyFired   = true;
+    const capturedGenId = _generationId;
 
     try {
-        while (anyFired) {
+        loop: while (anyFired) {
             anyFired = false;
             for (const rule of getEnabledRules(s)) {
                 if (!ruleHasStage(rule, 'postMessage')) continue;
@@ -259,6 +266,7 @@ export async function onMessageReceived(messageId) {
                 setBadge(messageId, 'thinking');
                 await executeActions(rule, 'postMessage', { matchedKeyword: matched, messageId, stCtx }, () => _generationId);
                 setBadge(messageId, 'modified');
+                if (_generationId !== capturedGenId) { trgLog('postMessage cancelled — breaking loop', { messageId }); break loop; }
             }
         }
     } finally {
@@ -281,8 +289,6 @@ export async function onMessageReceived(messageId) {
     if (rulesFired > 0) {
         trgPerf(`postMessage | rules=${rulesFired} | elapsed=${Math.round(performance.now() - tPostMsg)}ms`);
     }
-
-    if (!s.nonStreaming) return;
 
     for (const rule of getEnabledRules(s)) {
         if (!ruleHasStage(rule, 'stream')) continue;

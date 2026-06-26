@@ -321,8 +321,10 @@ export function interpolate(template, vars, ruleVars = {}) {
     };
 
     // {{if condition}}body{{/if}} — condition lookup handles chatvar:: / globalvar:: and numeric ops
+    // Condition group allows nested {{varName}} tokens: alternates between a full {{...}} block,
+    // any non-} character, and a lone } not followed by another }.
     let out = template.replace(
-        /\{\{if\s+([\s\S]*?)\}\}([\s\S]*?)\{\{\/if\}\}/g,
+        /\{\{if\s+((?:\{\{[^{}]*\}\}|[^}]|}(?!\}))*)\}\}([\s\S]*?)\{\{\/if\}\}/g,
         (_, cond, body) => evalCondition(cond, lookup) ? body : '',
     );
 

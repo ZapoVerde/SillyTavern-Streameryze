@@ -521,3 +521,65 @@ describe('{{if}} — chatvar / globalvar in condition', () => {
         )).toBe('HP: 7');
     });
 });
+
+// ---------------------------------------------------------------------------
+// {{if}} — wrapped variable syntax ({{varName}} form)
+// Variables in conditions may be written as {{varName}} instead of bare varName.
+// Both forms must produce identical results.
+// ---------------------------------------------------------------------------
+
+describe('{{if}} — wrapped {{varName}} form is equivalent to bare form', () => {
+    it('is — {{mood}} wrapped form matches', () => {
+        expect(interpolate('{{if {{mood}} is "angry"}}yes{{/if}}', { mood: 'angry' })).toBe('yes');
+        expect(interpolate('{{if {{mood}} is "angry"}}yes{{/if}}', { mood: 'happy' })).toBe('');
+    });
+
+    it('is — bare and wrapped produce the same result', () => {
+        const vars = { mood: 'angry' };
+        expect(interpolate('{{if mood is "angry"}}yes{{/if}}',       vars)).toBe('yes');
+        expect(interpolate('{{if {{mood}} is "angry"}}yes{{/if}}',   vars)).toBe('yes');
+    });
+
+    it('contains — wrapped form', () => {
+        expect(interpolate('{{if {{text}} contains "world"}}yes{{/if}}', { text: 'hello world' })).toBe('yes');
+        expect(interpolate('{{if {{text}} contains "world"}}yes{{/if}}', { text: 'hello'       })).toBe('');
+    });
+
+    it('numeric comparison — wrapped form', () => {
+        expect(interpolate('{{if {{hp}} < 20}}low{{/if}}', { hp: '15' })).toBe('low');
+        expect(interpolate('{{if {{hp}} < 20}}low{{/if}}', { hp: '50' })).toBe('');
+    });
+
+    it('empty — wrapped form', () => {
+        expect(interpolate('{{if {{x}} empty}}yes{{/if}}', { x: ''        })).toBe('yes');
+        expect(interpolate('{{if {{x}} empty}}yes{{/if}}', { x: 'present' })).toBe('');
+    });
+
+    it('NOT — !{{mood}} wrapped form', () => {
+        expect(interpolate('{{if !{{mood}} is "angry"}}yes{{/if}}', { mood: 'happy' })).toBe('yes');
+        expect(interpolate('{{if !{{mood}} is "angry"}}yes{{/if}}', { mood: 'angry' })).toBe('');
+    });
+
+    it('AND — mixed bare and wrapped in same condition', () => {
+        expect(interpolate(
+            '{{if {{mood}} is "angry" AND hp < 20}}alert{{/if}}',
+            { mood: 'angry', hp: '10' },
+        )).toBe('alert');
+        expect(interpolate(
+            '{{if {{mood}} is "angry" AND hp < 20}}alert{{/if}}',
+            { mood: 'calm', hp: '10' },
+        )).toBe('');
+    });
+
+    it('chatvar:: inside wrapped braces — {{chatvar::some-var}} with :: and - in name', () => {
+        vi.mocked(getLocalVariable).mockReturnValue(15);
+        expect(interpolate('{{if {{chatvar::some-var}} < 20}}yes{{/if}}', {})).toBe('yes');
+    });
+
+    it('body variables still resolve after wrapped-form condition', () => {
+        expect(interpolate(
+            '{{if {{mood}} is "angry"}}Mood: {{mood}}{{/if}}',
+            { mood: 'angry' },
+        )).toBe('Mood: angry');
+    });
+});

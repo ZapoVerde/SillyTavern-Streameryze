@@ -56,19 +56,25 @@ describe('importTrigger', () => {
     it('translates keyword trigger (text mode)', () => {
         const w = [];
         const t = importTrigger({ type: 'keyword', keywords: 'dragon', 'case-sensitive': true }, w, 'R1');
-        expect(t).toEqual({ type: 'keyword', config: { mode: 'text', keywords: 'dragon', caseSensitive: true } });
+        expect(t).toEqual({ type: 'keyword', config: { mode: 'text', matchMode: 'keyword', keywords: 'dragon', caseSensitive: true } });
         expect(w).toHaveLength(0);
     });
-    it('translates keyword trigger (use-regex)', () => {
+    it('translates keyword trigger (use-regex) — legacy field maps to matchMode:regex', () => {
         const w = [];
         const t = importTrigger({ type: 'keyword', 'use-regex': true, pattern: '/dragon/i' }, w);
-        expect(t?.config).toEqual({ mode: 'text', useRegex: true, pattern: '/dragon/i' });
+        expect(t?.config).toEqual({ mode: 'text', matchMode: 'regex', pattern: '/dragon/i' });
         expect(w).toHaveLength(0);
     });
-    it('translates old keyword mode:regex to useRegex', () => {
+    it('translates keyword match-mode:fuzzy', () => {
+        const w = [];
+        const t = importTrigger({ type: 'keyword', 'match-mode': 'fuzzy', keywords: 'Tavern', 'fuzzy-threshold': 75 }, w);
+        expect(t?.config).toEqual({ mode: 'text', matchMode: 'fuzzy', keywords: 'Tavern', fuzzyThreshold: '75' });
+        expect(w).toHaveLength(0);
+    });
+    it('translates old keyword mode:regex to matchMode:regex', () => {
         const w = [];
         const t = importTrigger({ type: 'keyword', mode: 'regex', pattern: '/foo/' }, w);
-        expect(t?.config).toEqual({ mode: 'text', useRegex: true, pattern: '/foo/' });
+        expect(t?.config).toEqual({ mode: 'text', matchMode: 'regex', pattern: '/foo/' });
         expect(w).toHaveLength(0);
     });
     it('warns on removed legacy type chat-complete', () => {
@@ -117,6 +123,12 @@ describe('importTrigger', () => {
         const w = [];
         const t = importTrigger({ type: 'var-match', var: 'summary', operator: 'empty' }, w);
         expect(t?.config).toMatchObject({ varName: 'summary', operator: 'empty' });
+        expect(w).toHaveLength(0);
+    });
+    it('translates var-match with fuzzy operator and threshold', () => {
+        const w = [];
+        const t = importTrigger({ type: 'var-match', var: 'loc', operator: 'fuzzy', value: 'Tavern', 'fuzzy-threshold': 75 }, w);
+        expect(t?.config).toMatchObject({ varName: 'loc', operator: 'fuzzy', value: 'Tavern', fuzzyThreshold: '75' });
         expect(w).toHaveLength(0);
     });
     it('translates var-match with use-regex', () => {
@@ -561,9 +573,23 @@ describe('exportTrigger', () => {
         const out = exportTrigger({ type: 'keyword', config: { mode: 'lorebook' } });
         expect(out).toEqual({ type: 'keyword', mode: 'lorebook' });
     });
-    it('exports keyword (regex tickbox) with use-regex and pattern fields', () => {
+    it('exports keyword (regex mode) with match-mode and pattern fields', () => {
+        const out = exportTrigger({ type: 'keyword', config: { mode: 'text', matchMode: 'regex', pattern: '/dragon/i' } });
+        expect(out).toEqual({ type: 'keyword', 'match-mode': 'regex', pattern: '/dragon/i' });
+    });
+    it('exports keyword legacy useRegex as match-mode:regex', () => {
         const out = exportTrigger({ type: 'keyword', config: { mode: 'text', useRegex: true, pattern: '/dragon/i' } });
-        expect(out).toEqual({ type: 'keyword', 'use-regex': true, pattern: '/dragon/i' });
+        expect(out).toEqual({ type: 'keyword', 'match-mode': 'regex', pattern: '/dragon/i' });
+    });
+    it('exports keyword (fuzzy mode) with match-mode, keywords, and fuzzy-threshold', () => {
+        const out = exportTrigger({ type: 'keyword', config: { mode: 'text', matchMode: 'fuzzy', keywords: 'Tavern', fuzzyThreshold: '75' } });
+        expect(out?.['match-mode']).toBe('fuzzy');
+        expect(out?.keywords).toBe('Tavern');
+        expect(out?.['fuzzy-threshold']).toBe(75);
+    });
+    it('omits fuzzy-threshold from keyword export when default 80', () => {
+        const out = exportTrigger({ type: 'keyword', config: { mode: 'text', matchMode: 'fuzzy', keywords: 'Tavern', fuzzyThreshold: '80' } });
+        expect(out?.['fuzzy-threshold']).toBeUndefined();
     });
     it('translates chance back to probability', () => {
         const out = exportTrigger({ type: 'chance', config: { chance: 75 } });
@@ -602,6 +628,16 @@ describe('exportTrigger', () => {
         expect(out?.['use-regex']).toBe(true);
         expect(out?.value).toBe('^\\d+$');
     });
+    it('exports varMatch fuzzy operator with value; omits fuzzy-threshold at default 80', () => {
+        const out = exportTrigger({ type: 'varMatch', config: { varName: 'loc', operator: 'fuzzy', value: 'Tavern', fuzzyThreshold: '80' } });
+        expect(out?.operator).toBe('fuzzy');
+        expect(out?.value).toBe('Tavern');
+        expect(out?.['fuzzy-threshold']).toBeUndefined();
+    });
+    it('exports varMatch fuzzy operator with non-default fuzzy-threshold', () => {
+        const out = exportTrigger({ type: 'varMatch', config: { varName: 'loc', operator: 'fuzzy', value: 'Tavern', fuzzyThreshold: '75' } });
+        expect(out?.['fuzzy-threshold']).toBe(75);
+    });
     it('omits use-regex on operators with no value field', () => {
         const out = exportTrigger({ type: 'varMatch', config: { varName: 'f', operator: 'notEmpty', value: '', useRegex: true } });
         expect(out?.['use-regex']).toBeUndefined();
@@ -616,11 +652,23 @@ describe('exportTrigger', () => {
         const out = exportTrigger({ type: 'badge', config: { style: 'top', label: 'Go', color: '#f00', splitOn: '', clickAction: 'fire' } });
         expect(out?.click).toBeUndefined();
     });
-    it('exports inline badge with use-regex and pattern, no keywords field', () => {
-        const out = exportTrigger({ type: 'badge', config: { style: 'inline', useRegex: true, pattern: '/dragon/i', color: '#f00', clickAction: 'fire' } });
-        expect(out?.['use-regex']).toBe(true);
+    it('exports inline badge (regex mode) with match-mode and pattern, no keywords field', () => {
+        const out = exportTrigger({ type: 'badge', config: { style: 'inline', matchMode: 'regex', pattern: '/dragon/i', color: '#f00', clickAction: 'fire' } });
+        expect(out?.['match-mode']).toBe('regex');
         expect(out?.pattern).toBe('/dragon/i');
         expect(out?.keywords).toBeUndefined();
+    });
+    it('exports inline badge legacy useRegex as match-mode:regex', () => {
+        const out = exportTrigger({ type: 'badge', config: { style: 'inline', useRegex: true, pattern: '/dragon/i', color: '#f00', clickAction: 'fire' } });
+        expect(out?.['match-mode']).toBe('regex');
+        expect(out?.pattern).toBe('/dragon/i');
+        expect(out?.keywords).toBeUndefined();
+    });
+    it('exports inline badge (fuzzy mode) with match-mode and keywords', () => {
+        const out = exportTrigger({ type: 'badge', config: { style: 'inline', matchMode: 'fuzzy', keywords: 'Tavern', fuzzyThreshold: '80', color: '#f00', clickAction: 'fire' } });
+        expect(out?.['match-mode']).toBe('fuzzy');
+        expect(out?.keywords).toBe('Tavern');
+        expect(out?.['fuzzy-threshold']).toBeUndefined();
     });
     it('preserves note', () => {
         const out = exportTrigger({ type: 'keyword', config: { mode: 'text', keywords: 'x', caseSensitive: false }, note: 'why' });

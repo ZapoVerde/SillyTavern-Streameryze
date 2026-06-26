@@ -736,3 +736,5 @@ describe('variable resolution — mode position', () => {
         expect(r).toBe('Elara, Marcus, Dragon, Magic');
     });
 });
+
+

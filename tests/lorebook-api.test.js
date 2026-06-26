@@ -8,6 +8,10 @@ vi.mock('../../../../../script.js', () => ({
     event_types:       { WORLDINFO_UPDATED: 'WORLDINFO_UPDATED' },
 }));
 
+// worldInfoCache comes from the stub via the vitest resolve alias.
+// The alias maps any path ending in /scripts/world-info.js to the shared
+// stub module, so both the code under test and this import share the same instance.
+import { worldInfoCache } from '../../../../scripts/world-info.js';
 import { lbGetLorebook, lbSaveLorebook } from '../lorebookApi.js';
 
 function mockFetch(status, body) {
@@ -79,15 +83,39 @@ describe('lbSaveLorebook', () => {
         expect(body.data).toEqual(data);
     });
 
+    it('updates worldInfoCache with the correct name and data', async () => {
+        mockFetch(200, {});
+        const data = { entries: { 0: { comment: 'E', content: 'c' } } };
+        await lbSaveLorebook('MyBook', data);
+        expect(worldInfoCache.set).toHaveBeenCalledOnce();
+        expect(worldInfoCache.set).toHaveBeenCalledWith('MyBook', data);
+    });
+
     it('emits WORLDINFO_UPDATED after a successful save', async () => {
         mockFetch(200, {});
         await lbSaveLorebook('MyBook', { entries: {} });
         expect(mockEmit).toHaveBeenCalledWith('WORLDINFO_UPDATED', 'MyBook', { entries: {} });
     });
 
-    it('throws on a non-OK response and does not emit', async () => {
+    it('updates cache before emitting WORLDINFO_UPDATED', async () => {
+        mockFetch(200, {});
+        await lbSaveLorebook('MyBook', { entries: {} });
+        const cacheOrder = worldInfoCache.set.mock.invocationCallOrder[0];
+        const emitOrder  = mockEmit.mock.invocationCallOrder[0];
+        expect(cacheOrder).toBeLessThan(emitOrder);
+    });
+
+    it('throws on a non-OK response and does not update cache or emit', async () => {
         mockFetch(403, {});
         await expect(lbSaveLorebook('Locked', {})).rejects.toThrow('403');
+        expect(worldInfoCache.set).not.toHaveBeenCalled();
+        expect(mockEmit).not.toHaveBeenCalled();
+    });
+
+    it('throws on 500 and does not update cache or emit', async () => {
+        mockFetch(500, {});
+        await expect(lbSaveLorebook('Book', {})).rejects.toThrow('500');
+        expect(worldInfoCache.set).not.toHaveBeenCalled();
         expect(mockEmit).not.toHaveBeenCalled();
     });
 });

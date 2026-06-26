@@ -201,4 +201,5 @@
 .trg-test-count          { opacity:.45; }
 
 /* Chat rendering — {{hideFromUser:}} transform output */
-.custom-trg-hide-user    { display:none !important; }
+.mes_text details > summary { cursor:pointer; opacity:.4; list-style:none; user-select:none; width:fit-content; }
+.mes_text details > summary::-webkit-details-marker { display:none; }

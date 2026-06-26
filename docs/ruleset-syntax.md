@@ -227,10 +227,11 @@ mode   "text" | "lorebook"   default "text"; omitted in export
 **mode: `text`** (default)
 
 ```
-keywords         string    required when use-regex is false; comma-separated; * and ? wildcards; supports {{varName}} and lb query tokens
-case-sensitive   boolean   default false; ignored when use-regex is true
-use-regex        boolean   default false; when true, match against pattern instead of keywords
-pattern          string    required when use-regex is true; /pattern/flags syntax or plain string; full match or first capture group → {{keyword}}
+keywords         string    required for keyword and fuzzy match-modes; comma-separated; * and ? wildcards; supports {{varName}} and lb query tokens
+case-sensitive   boolean   default false; keyword match-mode only; ignored in regex and fuzzy modes
+match-mode       "keyword" | "regex" | "fuzzy"   default "keyword"; controls how text is scanned
+pattern          string    required for regex match-mode; /pattern/flags syntax or plain string; full match or first capture group → {{keyword}}
+fuzzy-threshold  number    fuzzy match-mode only; Jaro-Winkler quality 0–100 (default 80)
 ```
 
 **mode: `lorebook`**
@@ -252,10 +253,11 @@ event   "MESSAGE_RECEIVED" | "GENERATION_STARTED" | "CHARACTER_MESSAGE_RENDERED"
 Fires when a named turn variable matches a condition. The variable must have been set by a `compose` or `call-llm` (`var` field) action in an earlier-firing rule this turn. Variable value → `{{keyword}}`.
 
 ```
-var        string                                                                      required
-operator   "equals" | "not-equals" | "contains" | "not-empty" | "empty" | "set" | "not-set"   default "equals"
-value      string                                                                             omit for "not-empty", "empty", "set", "not-set"
-use-regex  boolean                                                                             default false; when true, value is a regex pattern; omit for "not-empty", "empty", "set", "not-set"
+var              string                                                                                                            required
+operator         "equals" | "not-equals" | "contains" | "not-empty" | "empty" | "set" | "not-set" | "fuzzy"   default "equals"
+value            string                                                                                                           omit for "not-empty", "empty", "set", "not-set"
+use-regex        boolean                                                                                                          default false; when true, value is a regex pattern; omit for "not-empty", "empty", "set", "not-set", "fuzzy"
+fuzzy-threshold  number                                                                                                           fuzzy operator only; Jaro-Winkler threshold 0–100 (default 80)
 ```
 
 ### `condition`
@@ -266,9 +268,11 @@ Fires when a boolean expression over ST variables evaluates to true.
 expression   string   required; e.g. "chatvar::stats.hp < 20 AND chatvar::gold >= 100"
 ```
 
-Operators: `< > <= >= = != matches contains is empty in (…)`
+Operators: `< > <= >= = != matches contains is empty in (…) fuzzy`
 Combinators: `AND OR !` and `( )`
 Prefixes: `chatvar::` (chat-scoped), `globalvar::` (global), bare name (turn variable)
+
+`fuzzy` syntax: `varName fuzzy "target"` or `varName fuzzy "target" 80` — optional integer threshold (0–100, default 80). Fires when the Jaro-Winkler score between the variable's value and the target meets the threshold.
 
 ### `badge`
 
@@ -280,10 +284,11 @@ label          string                                button label; supports {{va
 color          string                                hex color; default "#8888ff"
 graph          boolean                               top/bottom only: render badge in monospace font; default false
 split-on       string                                delimiter to split label into multiple buttons; use \\n for newline, , for comma
-keywords       string                                inline only: comma-separated keywords to wrap as clickable spans; omit when use-regex is true
-case-sensitive boolean                               inline only; default false; omit when use-regex is true
-use-regex      boolean                               inline only; default false; when true, use pattern instead of keywords
-pattern        string                                inline only; required when use-regex is true; /pattern/flags syntax or plain string
+match-mode      "keyword" | "regex" | "fuzzy"         inline only; default "keyword"
+keywords        string                                inline only; comma-separated keywords to wrap as clickable spans; keyword and fuzzy modes only
+case-sensitive  boolean                               inline only; default false; keyword mode only
+pattern         string                                inline only; required in regex mode; /pattern/flags syntax or plain string
+fuzzy-threshold number                                inline only; fuzzy mode only; Jaro-Winkler threshold 0–100 (default 80)
 click          "fire" | "inject" | "inject-send"    default "fire" (runs rule actions)
 ```
 
@@ -460,10 +465,11 @@ Available in every `{{vars}}`-supporting field:
 {{highlighted}}                browser-selected text at badge click; empty for other triggers
 {{varName}}                    turn variable scoped to the current group
 {{$varName}}                   global turn variable — readable across all groups
-{{lbTitles:lb:title:key:mode:scope}}   comma-separated entry titles from lorebook query
-{{lbKeys:lb:title:key:mode:scope}}     comma-separated trigger keys from lorebook query
-{{lbContent:lb:title:key:mode:scope}}  entry body from lorebook query
-{{lbBooks:lb:title:key:mode:scope}}    lorebook names from lorebook query
+{{lbTitles:lb:title:key:mode:scope}}          comma-separated entry titles from lorebook query
+{{lbKeys:lb:title:key:mode:scope}}            comma-separated trigger keys from lorebook query
+{{lbContent:lb:title:key:mode:scope}}         entry body from lorebook query
+{{lbBooks:lb:title:key:mode:scope}}           lorebook names from lorebook query
+{{fuzzy:threshold:candidates:query}}          best-matching candidate from comma-separated list (Jaro-Winkler); '' if none meets threshold
 {{psName:nameFilter:mode}}      slot names from the last generation's context stack
 {{psContent:nameFilter:mode}}   slot content from the last generation's context stack
 {{psRows:nameFilter}}           TSV data source: one `identifier\tcharCount` line per matching slot
@@ -473,6 +479,8 @@ Available in every `{{vars}}`-supporting field:
 ```
 
 `lb` args: all optional (empty = wildcard). Filter args (lb/title/key): bare text = literal; `{{varName}}` = turn variable; `A, B` = OR list; `!pattern` = exclude; `"quoted, text"` = literal containing a comma; `AND(a,b)` / `OR(a,b)` for explicit combinators. `mode`: `first | last | rnd | all` (default: `all` for titles/keys/books, `first` for content). `scope`: `active` (default) | `all` (every lorebook on disk) | `inactive`.
+
+`{{fuzzy:threshold:candidates:query}}` — scores each comma-separated candidate against the query using Jaro-Winkler similarity (0–1); returns the best-scoring candidate at or above `threshold` (integer 0–100, default 80), or empty string if none qualify. Query is last so colons inside it are safe. Candidates are compatible with `{{lbTitles:…}}` output — compose lorebook titles into a turn variable and pass it as the candidates argument. Example: `{{fuzzy:80:{{lbTitles:trg_utility::location}}:{{locVar}}}}`.
 
 `ps` args: `nameFilter` optional. Forms: bare text = literal identifier or display name; `glob*` pattern; `{{varName}}` = turn variable; `!pattern` = exclude (e.g. `!chatHistory*`); `AND(a,b)` / `OR(a,b)` for multi-item combinators; `"quoted, literal"` protects commas. Mixed inclusions and exclusions supported. `mode`: `first | last | all`. Resolves postMessage only.
 
@@ -513,6 +521,15 @@ Conditional blocks (non-nestable):
 Operators: `matches "regex"`, `contains "text"`, `is "value"`, `in (a, b, c)`, `empty`
 Combinators: `AND`, `OR`, `!`, `( )`
 
+Variable names in conditions accept either bare form or the `{{varName}}` wrapped form — both are equivalent:
+
+```
+{{if mood is "angry"}}text{{/if}}
+{{if {{mood}} is "angry"}}text{{/if}}
+```
+
+The wrapped form also works with `chatvar::` and `globalvar::` prefixes: `{{chatvar::some-var}} < 20`.
+
 ---
 
 ## Template transforms
@@ -532,11 +549,13 @@ Run after all `{{varName}}` substitution and `{{math:}}`. Inner variable referen
 {{chars: N: val}}            first N characters
 {{join: delim: val}}         join non-empty lines with delimiter
 {{replace: find: with: val}} replace all occurrences of find with with (literal)
+{{match: /pattern/flags: val}} first capture group, or full match if no groups; '' if no match
+{{fuzzy: threshold: candidates: query}} best-matching candidate from comma-separated list (Jaro-Winkler 0–100); '' if none meets threshold
 {{default: fallback: val}}   val if non-empty after trim, otherwise fallback
 {{bar: value : bucketSize : max}}   colon bar chart — one ':' per full bucket, '.' if remainder > 20%, '+' on overflow
 {{pick: N: val}}             N random non-empty lines from val, newline-joined; if val has fewer than N lines, returns all
 {{pad: N: val}}              right-pad val with spaces to width N; truncate with '…' if longer than N
-{{hideFromUser: val}}        wrap in a CSS-hidden span — LLM sees the content in context, chat UI does not render it
+{{hideFromUser: val}}        wrap in a collapsible spoiler — hidden until clicked; LLM sees the content in context
 ```
 
 ```
@@ -546,12 +565,13 @@ Run after all `{{varName}}` substitution and `{{math:}}`. Inner variable referen
 {{chars: 80: {{summary}}}}                  truncate to 80 characters
 {{join: , : {{opts}}}}                      collapse lines to comma-separated
 {{replace: [Char]: {{char}}: {{prompt}}}}   swap placeholder for character name
+{{match: /^\w+/: {{response}}}}            extract first word from a variable
 {{default: nothing yet: {{summary}}}}       fallback when summary is unset
 {{pad: {{name_pad}}: {{.1}}}}              fixed-width column inside a mapLines body
 {{hideFromUser: [scene: {{scene}}]}}        send scene context to LLM without displaying it
 ```
 
-`{{join:}}`: one optional leading space after `join:` is consumed as padding; rest is literal delimiter. `{{replace:}}` and `{{default:}}`: find/with/fallback may not contain a colon.
+`{{join:}}`: one optional leading space after `join:` is consumed as padding; rest is literal delimiter. `{{replace:}}` and `{{default:}}`: find/with/fallback may not contain a colon. `{{match:}}`: pattern must use `/pattern/flags` syntax; colons inside the pattern are fine because the slashes bound it. `{{fuzzy:}}`: threshold is integer 0–100 (default 80 when blank); candidates are comma-separated; query is last so colons inside it are safe.
 
 ---
 

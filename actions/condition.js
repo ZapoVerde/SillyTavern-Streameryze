@@ -20,6 +20,7 @@
  */
 
 import { getLocalVariable, getGlobalVariable } from '../../../../../scripts/variables.js';
+import { jaroWinkler }                         from '../triggers/kw-match.js';
 
 // ---------------------------------------------------------------------------
 // ST variable reference helpers — index access via .key or [key]
@@ -53,10 +54,11 @@ export function makeLookup(snapshot) {
 // Matches plain var names AND chatvar::/globalvar:: refs with optional .key or [key]
 // ---------------------------------------------------------------------------
 
-const _VNAME = '(?:(?:chatvar|globalvar)::[a-zA-Z0-9_.\\[\\]]+|[a-zA-Z0-9_-]+)';
+const _VNAME = '(?:\\{\\{[^{}]+\\}\\}|(?:chatvar|globalvar)::[a-zA-Z0-9_.\\-\\[\\]]+|[a-zA-Z0-9_-]+)';
 
 function _evalAtomicCond(varName, op, rhs, lookup) {
-    const raw  = lookup(varName);
+    const name = varName.startsWith('{{') ? varName.slice(2, -2).trim() : varName;
+    const raw  = lookup(name);
     const val  = String(raw ?? '').trim();
     const valL = val.toLowerCase();
     const r    = (rhs ?? '').trim();
@@ -70,6 +72,8 @@ function _evalAtomicCond(varName, op, rhs, lookup) {
             return items.some(item => new RegExp(`^\\b${esc(item)}\\b$`, 'i').test(valL));
         }
         case 'empty':    return !raw || valL === '' || valL === 'none' || valL === 'unspecified';
+        case '=':        return valL === r.toLowerCase();
+        case '!=':       return valL !== r.toLowerCase();
         case '>':        return Number(val) >  Number(r);
         case '<':        return Number(val) <  Number(r);
         case '>=':       return Number(val) >= Number(r);
@@ -98,13 +102,24 @@ function _boolAlgebra(str) {
 
 export function evalCondition(cond, lookup) {
     let e = cond;
-    e = e.replace(new RegExp(`(${_VNAME})\\s+empty\\b`, 'gi'),
+    e = e.replace(new RegExp(`(${_VNAME})\\s+(?:is\\s+)?empty\\b`, 'gi'),
         (_, v) => _evalAtomicCond(v, 'empty', null, lookup) ? 'true' : 'false');
     e = e.replace(new RegExp(`(${_VNAME})\\s+in\\s+\\(([^)]+)\\)`, 'gi'),
         (_, v, list) => _evalAtomicCond(v, 'in', list, lookup) ? 'true' : 'false');
+    // fuzzy "target" [threshold] — threshold optional, defaults to 80
+    e = e.replace(new RegExp(`(${_VNAME})\\s+fuzzy\\s+"([^"]*)"(?:\\s+(\\d+))?`, 'gi'),
+        (_, v, target, thresh) => {
+            const name   = v.startsWith('{{') ? v.slice(2, -2).trim() : v;
+            const val    = String(lookup(name) ?? '').trim().toLowerCase();
+            const rawNum = parseFloat(thresh ?? '80');
+            const t      = Number.isFinite(rawNum) ? rawNum / 100 : 0.80;
+            return jaroWinkler(val, target.toLowerCase()) >= t ? 'true' : 'false';
+        });
     e = e.replace(new RegExp(`(${_VNAME})\\s+(matches|contains|is)\\s+"([^"]*)"`, 'gi'),
         (_, v, op, rhs) => _evalAtomicCond(v, op, rhs, lookup) ? 'true' : 'false');
     e = e.replace(new RegExp(`(${_VNAME})\\s+(>=|<=|>|<)\\s+(-?[\\d.]+)`, 'g'),
+        (_, v, op, rhs) => _evalAtomicCond(v, op, rhs, lookup) ? 'true' : 'false');
+    e = e.replace(new RegExp(`(${_VNAME})\\s+(!=|=)\\s+"([^"]*)"`, 'gi'),
         (_, v, op, rhs) => _evalAtomicCond(v, op, rhs, lookup) ? 'true' : 'false');
     try { return _boolAlgebra(e); } catch { return false; }
 }

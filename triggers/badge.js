@@ -19,19 +19,25 @@
  *     external_io:     none (preview reads turn-vars via kw-preview.js)
  */
 
-import { esc, updateKwPreview }              from './kw-preview.js';
-import { parseRegexPattern, findAllMatches } from './kw-match.js';
+import { esc, updateKwPreview }                              from './kw-preview.js';
+import { parseRegexPattern, findAllMatches, fuzzyMatchText } from './kw-match.js';
 import { testDrawerHtml, attachTestDrawer }  from './test-drawer.js';
 
 // Resolve function for the inline test drawer — no lorebook expansion, keywords are literal.
 function _resolveTestSpans(cfg, text) {
-    if (cfg.useRegex) {
+    const matchMode = cfg.matchMode ?? (cfg.useRegex ? 'regex' : 'keyword');
+    if (matchMode === 'regex') {
         if (!(cfg.pattern ?? '').trim()) return { hint: 'Enter a pattern above' };
         if (!parseRegexPattern(cfg.pattern))  return { error: 'Invalid pattern' };
         return findAllMatches(text, { useRegex: true, pattern: cfg.pattern });
     }
     if (!(cfg.keywords ?? '').trim()) return { hint: 'Enter keywords above' };
     const kws = cfg.keywords.split(',').map(k => k.trim()).filter(Boolean);
+    if (matchMode === 'fuzzy') {
+        const rawNum = parseFloat(cfg.fuzzyThreshold ?? '80');
+        const thresh = Number.isFinite(rawNum) ? rawNum / 100 : 0.80;
+        return findAllMatches(text, { useFuzzy: true, fuzzyKeywords: kws, fuzzyThreshold: thresh });
+    }
     return findAllMatches(text, { resolvedKeywords: kws, caseSensitive: cfg.caseSensitive ?? false });
 }
 
@@ -46,14 +52,14 @@ const _INLINE_DESC = 'Scans each message for keyword or pattern matches and wrap
 
 export const badgeTrigger = {
     label: 'badge',
-    defaultConfig: { style: 'top', graph: false, compact: true, label: 'run', color: '#8888ff', splitOn: '', keywords: '', caseSensitive: false, useRegex: false, pattern: '', badgeLabel: '', clickAction: 'fire' },
+    defaultConfig: { style: 'top', graph: false, compact: true, label: 'run', color: '#8888ff', splitOn: '', keywords: '', caseSensitive: false, matchMode: 'keyword', fuzzyThreshold: '80', pattern: '', badgeLabel: '', clickAction: 'fire' },
     async test() {
         // Never auto-fires. Activated only by clicking the rendered badge.
         return null;
     },
     renderConfig($el, config, onChange) {
-        const s        = config.style ?? 'top';
-        const useRegex = config.useRegex ?? false;
+        const s         = config.style ?? 'top';
+        const matchMode = config.matchMode ?? (config.useRegex ? 'regex' : 'keyword');
         $el.html(`
 <div style="display:flex;flex-direction:column;gap:6px">
     <div style="display:flex;gap:8px;align-items:center">
@@ -95,21 +101,30 @@ export const badgeTrigger = {
         <small class="trg-hint" style="display:block;margin-bottom:8px">${_INLINE_DESC}</small>
         <div style="display:flex;gap:8px;align-items:flex-start">
             <div style="flex:1;min-width:0">
-                <label class="trg-check-row" style="margin-bottom:4px">
-                    <input type="checkbox" class="trg-badge-regex" ${useRegex?'checked':''} />
-                    regex
-                </label>
-                <div class="trg-badge-kw-ui"${useRegex?' style="display:none"':''}>
+                <div style="display:flex;gap:12px;align-items:center;margin-bottom:4px;flex-wrap:wrap">
+                    <label class="trg-check-row">
+                        <input type="checkbox" class="trg-badge-regex" ${matchMode==='regex'?'checked':''} />
+                        regex
+                    </label>
+                    <label class="trg-check-row">
+                        <input type="checkbox" class="trg-badge-fuzzy" ${matchMode==='fuzzy'?'checked':''} />
+                        fuzzy
+                    </label>
+                    <input type="number" class="trg-badge-fuzz-thresh" min="0" max="100"
+                        value="${esc(config.fuzzyThreshold ?? '80')}" title="Jaro-Winkler threshold 0–100"
+                        style="width:48px;${matchMode!=='fuzzy'?'visibility:hidden;':''}" />
+                </div>
+                <div class="trg-badge-kw-ui"${matchMode==='regex'?' style="display:none"':''}>
                     <input type="text" class="text_pole trg-badge-kw" placeholder="word1, fire*, el?ra, or {{varName}}" value="${esc(config.keywords ?? '')}" />
                     <div class="trg-kw-preview" style="display:none"></div>
                     <div class="trg-kw-footer">
-                        <label class="trg-check-row">
+                        <label class="trg-check-row trg-badge-cs-row"${matchMode==='fuzzy'?' style="visibility:hidden"':''}>
                             <input type="checkbox" class="trg-badge-cs" ${config.caseSensitive?'checked':''} />
                             case sensitive
                         </label>
                     </div>
                 </div>
-                <div class="trg-badge-pattern-ui"${!useRegex?' style="display:none"':''}>
+                <div class="trg-badge-pattern-ui"${matchMode!=='regex'?' style="display:none"':''}>
                     <textarea class="text_pole trg-badge-pattern" rows="2" placeholder="/pattern/flags or plain text (case-insensitive)">${esc(config.pattern ?? '')}</textarea>
                 </div>
                 <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
@@ -145,22 +160,25 @@ export const badgeTrigger = {
         };
 
         const read = () => {
-            const style = $el.find('.trg-badge-style').val();
+            const style   = $el.find('.trg-badge-style').val();
+            const regexOn = $el.find('.trg-badge-regex').prop('checked');
+            const fuzzyOn = $el.find('.trg-badge-fuzzy').prop('checked');
             return {
                 style,
-                graph:         $el.find('.trg-badge-graph').prop('checked'),
-                compact:       $el.find('.trg-badge-compact').prop('checked'),
-                label:         $el.find('.trg-badge-label').val(),
-                splitOn:       $el.find('.trg-badge-spliton').val(),
-                color:         style === 'inline'
-                                   ? $el.find('.trg-badge-color-inline').val()
-                                   : $el.find('.trg-badge-color-top').val(),
-                keywords:      $el.find('.trg-badge-kw').val(),
-                caseSensitive: $el.find('.trg-badge-cs').prop('checked'),
-                useRegex:      $el.find('.trg-badge-regex').prop('checked'),
-                pattern:       $el.find('.trg-badge-pattern').val().trim(),
-                badgeLabel:    $el.find('.trg-badge-inline-label').val(),
-                clickAction:   $el.find('.trg-badge-clickaction').val(),
+                graph:          $el.find('.trg-badge-graph').prop('checked'),
+                compact:        $el.find('.trg-badge-compact').prop('checked'),
+                label:          $el.find('.trg-badge-label').val(),
+                splitOn:        $el.find('.trg-badge-spliton').val(),
+                color:          style === 'inline'
+                                    ? $el.find('.trg-badge-color-inline').val()
+                                    : $el.find('.trg-badge-color-top').val(),
+                keywords:       $el.find('.trg-badge-kw').val(),
+                caseSensitive:  $el.find('.trg-badge-cs').prop('checked'),
+                matchMode:      fuzzyOn ? 'fuzzy' : regexOn ? 'regex' : 'keyword',
+                fuzzyThreshold: $el.find('.trg-badge-fuzz-thresh').val(),
+                pattern:        $el.find('.trg-badge-pattern').val().trim(),
+                badgeLabel:     $el.find('.trg-badge-inline-label').val(),
+                clickAction:    $el.find('.trg-badge-clickaction').val(),
             };
         };
 
@@ -173,15 +191,28 @@ export const badgeTrigger = {
         $el.find('.trg-badge-clickaction').on('change', () => onChange(read()));
         $el.find('.trg-badge-inline-label').on('input', () => onChange(read()));
         $el.find('.trg-badge-regex').on('change', function () {
-            const on = this.checked;
-            $el.find('.trg-badge-kw-ui').toggle(!on);
-            $el.find('.trg-badge-pattern-ui').toggle(on);
+            if (this.checked) $el.find('.trg-badge-fuzzy').prop('checked', false);
+            const mm = this.checked ? 'regex' : 'keyword';
+            $el.find('.trg-badge-kw-ui').toggle(mm !== 'regex');
+            $el.find('.trg-badge-pattern-ui').toggle(mm === 'regex');
+            $el.find('.trg-badge-fuzz-thresh').css('visibility', 'hidden');
+            $el.find('.trg-badge-cs-row').css('visibility', 'visible');
             onChange(read());
             refreshTestDrawer();
         });
+        $el.find('.trg-badge-fuzzy').on('change', function () {
+            if (this.checked) $el.find('.trg-badge-regex').prop('checked', false);
+            $el.find('.trg-badge-kw-ui').show();
+            $el.find('.trg-badge-pattern-ui').hide();
+            $el.find('.trg-badge-fuzz-thresh').css('visibility', this.checked ? 'visible' : 'hidden');
+            $el.find('.trg-badge-cs-row').css('visibility', this.checked ? 'hidden' : 'visible');
+            onChange(read());
+            refreshTestDrawer();
+        });
+        $el.find('.trg-badge-fuzz-thresh').on('input', () => { onChange(read()); refreshTestDrawer(); });
         $el.find('.trg-badge-kw').on('input', function () {
             const cur = read();
-            updateKwPreview($el, cur.keywords, cur.caseSensitive);
+            if (cur.matchMode === 'keyword') updateKwPreview($el, cur.keywords, cur.caseSensitive);
             onChange(cur);
             refreshTestDrawer();
         });
@@ -192,6 +223,6 @@ export const badgeTrigger = {
             refreshTestDrawer();
         });
         $el.find('.trg-badge-pattern').on('input', () => { onChange(read()); refreshTestDrawer(); });
-        if (s === 'inline' && !useRegex) updateKwPreview($el, config.keywords ?? '', config.caseSensitive ?? false);
+        if (s === 'inline' && matchMode === 'keyword') updateKwPreview($el, config.keywords ?? '', config.caseSensitive ?? false);
     },
 };

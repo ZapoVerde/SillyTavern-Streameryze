@@ -19,12 +19,13 @@
  *     external_io:     none
  */
 
-import { trgLog } from '../logger.js';
+import { trgLog }        from '../logger.js';
+import { jaroWinkler }   from '../triggers/kw-match.js';
 
 export const TRANSFORM_PREFIXES = [
     'trim:', 'upper:', 'lower:', 'lines:', 'words:', 'default:',
-    'chars:', 'last:', 'nth:', 'cap:', 'len:', 'join:', 'replace:', 'bar:', 'pad:', 'pick:',
-    'hideFromUser:',
+    'chars:', 'last:', 'nth:', 'cap:', 'len:', 'join:', 'replace:', 'match:', 'bar:', 'pad:', 'pick:',
+    'hideFromUser:', 'fuzzy:',
 ];
 
 export function resolveTransforms(template) {
@@ -81,6 +82,17 @@ export function resolveTransforms(template) {
         find ? val.split(find).join(repl) : val,
     );
 
+    // {{match: /pattern/flags: val}} — first capture group, or full match if no groups; '' if no match.
+    // Pattern must use /pattern/flags syntax; colons inside the pattern are fine.
+    template = template.replace(/\{\{match:\s*(\/(?:[^/\\]|\\.)*\/[gimsuy]*):\s*([\s\S]*?)\}\}/g, (_, pat, val) => {
+        try {
+            const m = /^\/(.*)\/([gimsuy]*)$/.exec(pat);
+            const re = new RegExp(m[1], m[2]);
+            const hit = re.exec(val);
+            return hit ? (hit[1] ?? hit[0]) : '';
+        } catch { return ''; }
+    });
+
     // {{pad: N : val}} — right-pad val with spaces to N characters. Truncates with '…' if longer.
     template = template.replace(/\{\{pad:\s*(\d+):\s*([\s\S]*?)\}\}/g, (_, n, val) => {
         const w = parseInt(n, 10);
@@ -113,11 +125,32 @@ export function resolveTransforms(template) {
         trgLog('bar transform', { val, bucket, maxCols, result });
         return result;
     });
-    // {{hideFromUser: text}} — wraps content in a span hidden by CSS in the chat UI.
-    // The span survives to msg.mes so the LLM still sees it in context (as raw HTML).
-    // DOMPurify prefixes all custom classes with "custom-", so the CSS target is .custom-trg-hide-user.
+    // {{fuzzy:threshold:candidates:query}} — returns the best-matching candidate via Jaro-Winkler.
+    // threshold is 0-100 integer (default 80). candidates are comma-separated. query is last
+    // so colons inside it cannot shift earlier positions. Returns '' if no candidate scores at
+    // or above threshold, or if query/candidates are empty.
+    template = template.replace(/\{\{fuzzy:([\s\S]*?)\}\}/g, (_, content) => {
+        const parts      = content.split(':');
+        const rawThresh  = (parts[0] ?? '').trim();
+        const candidates = (parts[1] ?? '').trim();
+        const query      = parts.slice(2).join(':').trim();
+        if (!query || !candidates) return '';
+        const thresh = Number.isFinite(parseFloat(rawThresh)) ? parseFloat(rawThresh) / 100 : 0.80;
+        const q      = query.toLowerCase();
+        const best   = candidates.split(',')
+            .map(c => c.trim()).filter(Boolean)
+            .map(c => ({ c, score: jaroWinkler(q, c.toLowerCase()) }))
+            .filter(x => x.score >= thresh)
+            .sort((a, b) => b.score - a.score)[0];
+        return best?.c ?? '';
+    });
+
+    // {{hideFromUser: text}} — wraps content in a <details> spoiler in the chat UI.
+    // <details> is block-level so multi-paragraph content with blank lines works (showdown passes block HTML raw).
+    // The element survives to msg.mes so the LLM still sees it in context (as raw HTML).
+    // No class attribute: keeps the LLM-visible markup minimal; native <details> behaviour handles hide/show.
     template = template.replace(/\{\{hideFromUser:\s*([\s\S]*?)\}\}/g, (_, val) =>
-        `<span class="trg-hide-user">${val}</span>`,
+        `<details><summary>▸</summary>${val}</details>`,
     );
 
     // debug: flag any unresolved {{bar:}} tokens that didn't match (non-numeric first arg)

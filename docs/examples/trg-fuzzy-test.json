@@ -1,0 +1,150 @@
+{
+  "rulesets": [
+    {
+      "name": "FZ-1: Transform Tests",
+      "note": "Badge-driven. Click each badge — a toast appears immediately. All five should show [PASS]. No AI message needed.",
+      "rules": [
+        {
+          "name": "T1: exact match",
+          "note": "{{fuzzy:80:Tavern,Castle,Forest:Tavern}} — exact match always scores 1.0, well above threshold.",
+          "triggers": [
+            { "type": "badge", "style": "top", "label": "T1: exact", "click": "fire" }
+          ],
+          "actions": [
+            { "type": "compose", "var": "res", "template": "{{fuzzy:80:Tavern, Castle, Forest:Tavern}}" },
+            { "type": "toast", "level": "info", "title": "T1: exact match", "message": "\"Tavern\" → {{default:(empty):{{res}}}}{{if res is \"Tavern\"}} [PASS]{{/if}}" }
+          ]
+        },
+        {
+          "name": "T2: typo match",
+          "note": "{{fuzzy:80:Tavern,...:Tarvern}} — transposition; Jaro-Winkler ~0.94, above 80.",
+          "triggers": [
+            { "type": "badge", "style": "top", "label": "T2: typo", "click": "fire" }
+          ],
+          "actions": [
+            { "type": "compose", "var": "res", "template": "{{fuzzy:80:Tavern, Castle, Forest:Tarvern}}" },
+            { "type": "toast", "level": "info", "title": "T2: typo match", "message": "\"Tarvern\" → {{default:(empty):{{res}}}}{{if res is \"Tavern\"}} [PASS]{{/if}}" }
+          ]
+        },
+        {
+          "name": "T3: article variant",
+          "note": "{{fuzzy:75:Tavern,...:The Tavern}} — threshold lowered to 75; 'The Tavern' vs 'Tavern' scores above 0.75.",
+          "triggers": [
+            { "type": "badge", "style": "top", "label": "T3: article", "click": "fire" }
+          ],
+          "actions": [
+            { "type": "compose", "var": "res", "template": "{{fuzzy:75:Tavern, Castle, Forest:The Tavern}}" },
+            { "type": "toast", "level": "info", "title": "T3: article variant (threshold 75)", "message": "\"The Tavern\" → {{default:(empty):{{res}}}}{{if res is \"Tavern\"}} [PASS]{{/if}}" }
+          ]
+        },
+        {
+          "name": "T4: below threshold (should return empty)",
+          "note": "{{fuzzy:99:Tavern,...:Tarvern}} — threshold 99 rejects even close matches. Expect empty string.",
+          "triggers": [
+            { "type": "badge", "style": "top", "label": "T4: no match", "click": "fire" }
+          ],
+          "actions": [
+            { "type": "compose", "var": "res", "template": "{{fuzzy:99:Tavern, Castle, Forest:Tarvern}}" },
+            { "type": "toast", "level": "info", "title": "T4: below threshold (99)", "message": "\"Tarvern\" @99 → {{default:(empty):{{res}}}}{{if res empty}} [PASS]{{/if}}" }
+          ]
+        },
+        {
+          "name": "T5: multi-word candidate",
+          "note": "{{fuzzy:80:Dark Forest,...:Drak Forest}} — tests that multi-word candidates score correctly as a unit.",
+          "triggers": [
+            { "type": "badge", "style": "top", "label": "T5: multi-word", "click": "fire" }
+          ],
+          "actions": [
+            { "type": "compose", "var": "res", "template": "{{fuzzy:80:Dark Forest, Light Cave, Bright Meadow:Drak Forest}}" },
+            { "type": "toast", "level": "info", "title": "T5: multi-word candidate", "message": "\"Drak Forest\" → {{default:(empty):{{res}}}}{{if res is \"Dark Forest\"}} [PASS]{{/if}}" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "FZ-2: Trigger Tests",
+      "note": "Step 1: Click 'Set chatvar' — writes chatvar::TRG_fuzz_loc = Tarvern (persists until changed). Step 2: Send any message to the AI — T6 and T8 should toast green [PASS]; T7 and T9 should stay silent (red toast = failure). Step 3: Ask the AI to include the word 'Tarvern' in its reply — T10 should fire and show the matched text. T6/T7 fire on every AI message (turn var reset each turn). T8/T9 use the chatvar from step 1 and keep firing on every subsequent message.",
+      "rules": [
+        {
+          "name": "Setup: write chatvar for T8/T9",
+          "note": "Click once before sending any message. Writes chatvar::TRG_fuzz_loc = Tarvern for the condition tests.",
+          "triggers": [
+            { "type": "badge", "style": "top", "label": "Set chatvar", "click": "fire" }
+          ],
+          "actions": [
+            { "type": "set-var", "scope": "chat", "var": "TRG_fuzz_loc", "value": "Tarvern" },
+            { "type": "toast", "level": "info", "title": "Setup", "message": "chatvar::TRG_fuzz_loc = Tarvern" }
+          ]
+        },
+        {
+          "name": "T6-write: set $fzt = Tarvern",
+          "note": "Fires on every MESSAGE_RECEIVED. Sets the global turn var used by T6 and T7. Listed before T6/T7 so the stability loop sees it first.",
+          "triggers": [
+            { "type": "event", "event": "MESSAGE_RECEIVED" }
+          ],
+          "actions": [
+            { "type": "compose", "var": "$fzt", "template": "Tarvern" }
+          ]
+        },
+        {
+          "name": "T6: var-match fuzzy SHOULD fire",
+          "note": "var-match fuzzy 'Tavern' 80 on $fzt='Tarvern'. Jaro-Winkler ~0.94 >= 0.80. {{keyword}} = the variable's actual value.",
+          "when": "all",
+          "triggers": [
+            { "type": "event", "event": "MESSAGE_RECEIVED" },
+            { "type": "var-match", "var": "$fzt", "operator": "fuzzy", "value": "Tavern" }
+          ],
+          "actions": [
+            { "type": "toast", "level": "success", "title": "T6: var-match fuzzy [PASS]", "message": "\"{{keyword}}\" fuzzy matches \"Tavern\" (threshold 80)" }
+          ]
+        },
+        {
+          "name": "T7: var-match fuzzy should NOT fire",
+          "note": "var-match fuzzy 'Castle' 90 on $fzt='Tarvern'. Tarvern vs Castle scores very low — should not reach 90. If this toast appears, something is wrong.",
+          "when": "all",
+          "triggers": [
+            { "type": "event", "event": "MESSAGE_RECEIVED" },
+            { "type": "var-match", "var": "$fzt", "operator": "fuzzy", "value": "Castle", "fuzzy-threshold": 90 }
+          ],
+          "actions": [
+            { "type": "toast", "level": "error", "title": "T7: UNEXPECTED FIRE", "message": "\"{{keyword}}\" matched \"Castle\" at 90 — this should not have happened" }
+          ]
+        },
+        {
+          "name": "T8: condition fuzzy SHOULD fire",
+          "note": "Fires when chatvar::TRG_fuzz_loc fuzzy 'Tavern' 80. Click 'Set chatvar' first, then send any message.",
+          "when": "all",
+          "triggers": [
+            { "type": "event", "event": "MESSAGE_RECEIVED" },
+            { "type": "condition", "expression": "chatvar::TRG_fuzz_loc fuzzy \"Tavern\" 80" }
+          ],
+          "actions": [
+            { "type": "toast", "level": "success", "title": "T8: condition fuzzy [PASS]", "message": "chatvar::TRG_fuzz_loc = \"Tarvern\" fuzzy matches \"Tavern\" (threshold 80)" }
+          ]
+        },
+        {
+          "name": "T9: condition fuzzy should NOT fire",
+          "note": "Fires if chatvar::TRG_fuzz_loc fuzzy 'Castle' 90 — Tarvern vs Castle at 90 should not fire. If this appears, something is wrong.",
+          "when": "all",
+          "triggers": [
+            { "type": "event", "event": "MESSAGE_RECEIVED" },
+            { "type": "condition", "expression": "chatvar::TRG_fuzz_loc fuzzy \"Castle\" 90" }
+          ],
+          "actions": [
+            { "type": "toast", "level": "error", "title": "T9: UNEXPECTED FIRE", "message": "chatvar::TRG_fuzz_loc matched \"Castle\" at 90 — this should not have happened" }
+          ]
+        },
+        {
+          "name": "T10: keyword fuzzy match",
+          "note": "Fires when the AI's response contains text that fuzzy-matches 'Tavern' at threshold 80. Ask the AI to use 'Tarvern' in its reply. {{keyword}} = the actual text that matched.",
+          "triggers": [
+            { "type": "keyword", "match-mode": "fuzzy", "keywords": "Tavern", "fuzzy-threshold": 80 }
+          ],
+          "actions": [
+            { "type": "toast", "level": "success", "title": "T10: keyword fuzzy [PASS]", "message": "matched: \"{{keyword}}\" (keyword: Tavern, threshold 80)" }
+          ]
+        }
+      ]
+    }
+  ]
+}

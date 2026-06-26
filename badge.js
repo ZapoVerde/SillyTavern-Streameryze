@@ -35,7 +35,7 @@
 import { extension_settings }                        from '../../../extensions.js';
 import { resolveLbQueryTokens }  from './triggers/lb-query.js';
 import { getTurnVarsSnapshot }   from './triggers/turn-vars.js';
-import { parseRegexPattern }     from './triggers/kw-match.js';
+import { parseRegexPattern, fuzzyMatchText } from './triggers/kw-match.js';
 import { trgLog }                from './logger.js';
 
 const EXT_NAME = 'triggeryze';
@@ -125,6 +125,8 @@ export function setBadge(messageId, state) {
         .addClass(`trg-badge-${state}`);
     $badge.find('i').attr('class', `fa-solid ${ICONS[state] ?? ICONS.unchanged}`);
     $badge.find('.trg-badge-text').text(state);
+    if (state === 'thinking') $badge.attr('title', 'Click to cancel');
+    else $badge.removeAttr('title');
 }
 
 // ─── Rule badge buttons (top & bottom) ───────────────────────────────────────
@@ -301,12 +303,28 @@ function buildKeywordPatterns(defs) {
     const patterns = [];
     for (const def of defs) {
         const safeColor = def.color && /^#[0-9a-fA-F]{6}$/.test(def.color) ? def.color : '#8888ff';
-        if (def.useRegex) {
+        const matchMode = def.matchMode ?? (def.useRegex ? 'regex' : 'keyword');
+        if (matchMode === 'regex') {
             const re = parseRegexPattern(def.pattern ?? '');
             if (!re) continue;
             const flags = re.flags.includes('g') ? re.flags : `g${re.flags}`;
             patterns.push({
                 re:          new RegExp(re.source, flags),
+                ruleId:      def.ruleId,
+                color:       safeColor,
+                clickAction: def.clickAction || 'fire',
+                badgeLabel:  def.badgeLabel ?? '',
+            });
+            continue;
+        }
+        if (matchMode === 'fuzzy') {
+            const kws    = (def.keywords ?? '').split(',').map(k => k.trim()).filter(Boolean);
+            const rawNum = parseFloat(def.fuzzyThreshold ?? '80');
+            const thresh = Number.isFinite(rawNum) ? rawNum / 100 : 0.80;
+            patterns.push({
+                fuzzy:       true,
+                keywords:    kws,
+                threshold:   thresh,
                 ruleId:      def.ruleId,
                 color:       safeColor,
                 clickAction: def.clickAction || 'fire',
@@ -333,7 +351,16 @@ function buildKeywordPatterns(defs) {
 
 function findMatches(text, patterns) {
     const raw = [];
-    for (const { re, ruleId, color, clickAction, badgeLabel } of patterns) {
+    for (const pat of patterns) {
+        if (pat.fuzzy) {
+            for (const kw of pat.keywords) {
+                const m = fuzzyMatchText(text, kw, pat.threshold);
+                if (m) raw.push({ start: m.start, end: m.end, matched: m.value,
+                    ruleId: pat.ruleId, color: pat.color, clickAction: pat.clickAction, badgeLabel: pat.badgeLabel });
+            }
+            continue;
+        }
+        const { re, ruleId, color, clickAction, badgeLabel } = pat;
         re.lastIndex = 0;
         let m;
         while ((m = re.exec(text)) !== null) {
@@ -393,10 +420,12 @@ export async function buildResolvedPatterns(defs) {
         // Protect {{keyword}} from turn-var expansion — it resolves per-match in replaceTextNode.
         const rawLabel   = (def.badgeLabel ?? '').replace(/\{\{keyword\}\}/gi, '\x01KW\x01');
         const badgeLabel = expandVars(rawLabel, snapshot).replace(/\x01KW\x01/g, '{{keyword}}');
-        if (def.useRegex) {
+        const matchMode  = def.matchMode ?? (def.useRegex ? 'regex' : 'keyword');
+        if (matchMode === 'regex') {
             return { ...def, pattern: expandVars(def.pattern ?? '', snapshot), badgeLabel };
         }
-        const afterLb = await resolveLbQueryTokens(def.keywords ?? '', snapshot);
+        // keyword and fuzzy both resolve the keywords field
+        const afterLb  = await resolveLbQueryTokens(def.keywords ?? '', snapshot);
         const keywords = expandVars(afterLb, snapshot);
         return { ...def, keywords, badgeLabel };
     }));

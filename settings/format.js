@@ -133,8 +133,15 @@ const TRIGGER_CFG_I = {
     keyword:       r => {
         const mode = r.mode ?? 'text';
         if (mode === 'lorebook') return { mode: 'lorebook' };
-        if (mode === 'regex' || r['use-regex']) return { mode: 'text', useRegex: true, pattern: r.pattern ?? '' };
-        return { mode: 'text', keywords: r.keywords ?? '', caseSensitive: r['case-sensitive'] ?? false };
+        // match-mode field (new) takes precedence; legacy use-regex / mode:'regex' still import cleanly
+        const matchMode = r['match-mode'] ?? ((r['use-regex'] || mode === 'regex') ? 'regex' : 'keyword');
+        if (matchMode === 'regex') return { mode: 'text', matchMode: 'regex', pattern: r.pattern ?? '' };
+        if (matchMode === 'fuzzy') return {
+            mode: 'text', matchMode: 'fuzzy',
+            keywords:       r.keywords ?? '',
+            fuzzyThreshold: String(r['fuzzy-threshold'] ?? '80'),
+        };
+        return { mode: 'text', matchMode: 'keyword', keywords: r.keywords ?? '', caseSensitive: r['case-sensitive'] ?? false };
     },
     varMatch:      r => {
         let op       = _OP_I[r.operator] ?? r.operator ?? 'equals';
@@ -142,21 +149,28 @@ const TRIGGER_CFG_I = {
         if (op === 'matches') { op = 'equals'; useRegex = true; }
         const out = { varName: r.var ?? '', operator: op, value: r.value ?? '' };
         if (useRegex) out.useRegex = true;
+        if (op === 'fuzzy' && r['fuzzy-threshold'] !== undefined)
+            out.fuzzyThreshold = String(r['fuzzy-threshold']);
         return out;
     },
     condition:     r => ({ expression: r.expression ?? '' }),
-    badge:         r => ({
-        style:         r.style        ?? 'top',
-        label:         r.label        ?? 'run',
-        color:         r.color        ?? '#8888ff',
-        graph:         r.graph        === true,
-        splitOn:       r['split-on']  ?? '',
-        keywords:      r.keywords     ?? '',
-        caseSensitive: r['case-sensitive'] ?? false,
-        useRegex:      r['use-regex'] ?? false,
-        pattern:       r.pattern      ?? '',
-        clickAction:   r.click        ?? 'fire',
-    }),
+    badge:         r => {
+        // match-mode field (new) takes precedence; legacy use-regex still imports cleanly for inline
+        const matchMode = r['match-mode'] ?? (r['use-regex'] ? 'regex' : 'keyword');
+        return {
+            style:          r.style        ?? 'top',
+            label:          r.label        ?? 'run',
+            color:          r.color        ?? '#8888ff',
+            graph:          r.graph        === true,
+            splitOn:        r['split-on']  ?? '',
+            matchMode,
+            keywords:       r.keywords     ?? '',
+            caseSensitive:  r['case-sensitive'] ?? false,
+            pattern:        r.pattern      ?? '',
+            fuzzyThreshold: String(r['fuzzy-threshold'] ?? '80'),
+            clickAction:    r.click        ?? 'fire',
+        };
+    },
     chance:        r => ({ chance: r.chance ?? 50 }),
     event:         r => ({ event: r.event ?? 'MESSAGE_RECEIVED' }),
 };
@@ -242,8 +256,16 @@ const TRIGGER_CFG_E = {
     keyword:      cfg => {
         const mode = cfg.mode ?? 'text';
         if (mode === 'lorebook') return { mode: 'lorebook' };
-        if (cfg.useRegex) return { 'use-regex': true, pattern: cfg.pattern ?? '' };
-        // text mode: omit 'mode' field so old format readers aren't surprised
+        // derive matchMode from new field or legacy useRegex
+        const matchMode = cfg.matchMode ?? (cfg.useRegex ? 'regex' : 'keyword');
+        if (matchMode === 'regex') return { 'match-mode': 'regex', pattern: cfg.pattern ?? '' };
+        if (matchMode === 'fuzzy') {
+            const out = { 'match-mode': 'fuzzy', keywords: cfg.keywords ?? '' };
+            const t = parseInt(cfg.fuzzyThreshold ?? '80', 10);
+            if (t !== 80) out['fuzzy-threshold'] = t;
+            return out;
+        }
+        // keyword mode: omit 'mode' field so old format readers aren't surprised
         const out = { keywords: cfg.keywords ?? '' };
         if (cfg.caseSensitive) out['case-sensitive'] = true;
         return out;
@@ -255,6 +277,10 @@ const TRIGGER_CFG_E = {
         if (!_noVal.includes(op)) {
             out.value = cfg.value ?? '';
             if (cfg.useRegex) out['use-regex'] = true;
+            if (op === 'fuzzy') {
+                const t = parseInt(cfg.fuzzyThreshold ?? '80', 10);
+                if (t !== 80) out['fuzzy-threshold'] = t;
+            }
         }
         return out;
     },
@@ -264,9 +290,15 @@ const TRIGGER_CFG_E = {
         const out = { style: cfg.style ?? 'top' };
         if (isInline) {
             out.color = cfg.color ?? '#8888ff';
-            if (cfg.useRegex) {
-                out['use-regex'] = true;
-                out.pattern      = cfg.pattern ?? '';
+            const matchMode = cfg.matchMode ?? (cfg.useRegex ? 'regex' : 'keyword');
+            if (matchMode === 'regex') {
+                out['match-mode'] = 'regex';
+                out.pattern       = cfg.pattern ?? '';
+            } else if (matchMode === 'fuzzy') {
+                out['match-mode'] = 'fuzzy';
+                out.keywords      = cfg.keywords ?? '';
+                const t = parseInt(cfg.fuzzyThreshold ?? '80', 10);
+                if (t !== 80) out['fuzzy-threshold'] = t;
             } else {
                 out.keywords = cfg.keywords ?? '';
                 if (cfg.caseSensitive) out['case-sensitive'] = true;

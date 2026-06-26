@@ -19,9 +19,9 @@
  *     external_io:     none (reads turn vars via getTurnVar / _turnVars directly)
  */
 
-import { getTurnVar, getTurnVarsSnapshot } from './turn-vars.js';
-import { parseRegexPattern }               from './kw-match.js';
-import { trgWarn }                         from '../logger.js';
+import { getTurnVar, getTurnVarsSnapshot }    from './turn-vars.js';
+import { parseRegexPattern, jaroWinkler }    from './kw-match.js';
+import { trgWarn }                           from '../logger.js';
 
 let _listSeq = 0;
 
@@ -40,7 +40,7 @@ function updateVarPreview($el, varName) {
 
 export const varMatchTrigger = {
     label: 'variable match',
-    defaultConfig: { varName: '', operator: 'equals', value: '', useRegex: false },
+    defaultConfig: { varName: '', operator: 'equals', value: '', useRegex: false, fuzzyThreshold: '80' },
     async test(_text, config, rulesetId) {
         const name = (config.varName ?? '').trim();
         if (!name) return null;
@@ -64,6 +64,12 @@ export const varMatchTrigger = {
             return op === 'notEquals' ? (!matched ? actual : null) : (matched ? actual : null);
         }
 
+        if (op === 'fuzzy') {
+            const rawNum  = parseFloat(config.fuzzyThreshold ?? '80');
+            const thresh  = Number.isFinite(rawNum) ? rawNum / 100 : 0.80;
+            return jaroWinkler(actual.toLowerCase(), target.toLowerCase()) >= thresh ? actual : null;
+        }
+
         if (op === 'equals')    return actual === target ? actual : null;
         if (op === 'notEquals') return actual !== target ? actual : null;
         if (op === 'contains')  return actual.toLowerCase().includes(target.toLowerCase()) ? actual : null;
@@ -77,6 +83,7 @@ export const varMatchTrigger = {
             equals:    'Fires when the variable value exactly matches the target (case-sensitive).',
             notEquals: 'Fires when the variable value does not match the target. Does not fire if the variable is unset.',
             contains:  'Fires when the variable value contains the target text (case-insensitive). Does not fire if the variable is unset.',
+            fuzzy:     'Fires when the variable value fuzzy-matches the target (Jaro-Winkler). Threshold 0–100 (default 80). Does not fire if the variable is unset.',
             notEmpty:  'Fires when the variable is set and has a non-blank value.',
             empty:     'Fires when the variable is set but its value is blank or whitespace. Does not fire if the variable is unset.',
             set:       'Fires when the variable was written this turn, even if the value is empty.',
@@ -93,6 +100,7 @@ export const varMatchTrigger = {
         <option value="equals"    ${op === 'equals'    ? 'selected' : ''}>equals</option>
         <option value="notEquals" ${op === 'notEquals' ? 'selected' : ''}>not equals</option>
         <option value="contains"  ${op === 'contains'  ? 'selected' : ''}>contains</option>
+        <option value="fuzzy"     ${op === 'fuzzy'     ? 'selected' : ''}>fuzzy</option>
         <option value="notEmpty"  ${op === 'notEmpty'  ? 'selected' : ''}>not empty</option>
         <option value="empty"     ${op === 'empty'     ? 'selected' : ''}>is empty</option>
         <option value="set"       ${op === 'set'       ? 'selected' : ''}>is set</option>
@@ -101,6 +109,10 @@ export const varMatchTrigger = {
     <input type="text" class="text_pole trg-cfg trg-vm-value" placeholder="value"
         value="${$('<span>').text(config.value ?? '').html()}"
         style="flex:1;min-width:80px;${_noValue.includes(op) ? 'display:none' : ''}" />
+    <input type="number" class="trg-vm-fuzz-thresh" min="0" max="100"
+        value="${$('<span>').text(config.fuzzyThreshold ?? '80').html()}"
+        title="Jaro-Winkler threshold 0–100"
+        style="width:52px;flex:0 0 auto;${op !== 'fuzzy' ? 'visibility:hidden' : ''}" />
     <label class="trg-check-row trg-vm-regex-row" style="flex:0 0 auto${_noValue.includes(op) ? ';display:none' : ''}">
         <input type="checkbox" class="trg-cfg trg-vm-regex" ${useRegex ? 'checked' : ''} />
         regex
@@ -126,11 +138,14 @@ export const varMatchTrigger = {
 
         updateVarPreview($el, config.varName ?? '');
 
+        const $thresh = $el.find('.trg-vm-fuzz-thresh');
+
         const read = () => ({
-            varName:  $name.val(),
-            operator: $op.val(),
-            value:    $value.val(),
-            useRegex: $el.find('.trg-vm-regex').prop('checked'),
+            varName:        $name.val(),
+            operator:       $op.val(),
+            value:          $value.val(),
+            useRegex:       $el.find('.trg-vm-regex').prop('checked'),
+            fuzzyThreshold: $thresh.val(),
         });
         $name.on('input', function () {
             onChange(read());
@@ -140,10 +155,12 @@ export const varMatchTrigger = {
             const hide = _noValue.includes(this.value);
             $value.toggle(!hide);
             $regex.toggle(!hide);
+            $thresh.css('visibility', this.value === 'fuzzy' ? 'visible' : 'hidden');
             $hint.text(_hints[this.value] ?? '');
             onChange(read());
         });
         $value.on('input', () => onChange(read()));
+        $thresh.on('input', () => onChange(read()));
         $el.find('.trg-vm-regex').on('change', () => onChange(read()));
     },
 };

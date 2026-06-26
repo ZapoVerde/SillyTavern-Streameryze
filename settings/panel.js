@@ -1,10 +1,10 @@
 /**
  * @file st-extensions/SillyTavern-Triggeryze/settings/panel.js
- * @stamp {"utc":"2026-06-15T00:00:00.000Z"}
+ * @stamp {"utc":"2026-06-26T00:00:00.000Z"}
  * @architectural-role UI — settings panel shell (HTML, global checkboxes, panel wiring)
  * @description
- * Injects the Triggeryze drawer into ST's extensions settings area and wires the four
- * global checkboxes (enable, verbose, non-streaming, show-badges) and the add-rule
+ * Injects the Triggeryze drawer into ST's extensions settings area and wires the three
+ * global checkboxes (enable, verbose, show-badges) and the add-rule
  * button. Rule rendering and profile management are delegated to rule-cards.js and
  * profiles.js respectively.
  *
@@ -40,10 +40,6 @@ export async function addSettingsPanel() {
     <label class="checkbox_label">
         <input type="checkbox" id="trg_verbose" />
         <span>Verbose logging</span>
-    </label>
-    <label class="checkbox_label">
-        <input type="checkbox" id="trg_nonstreaming" />
-        <span>Run on non-streaming responses</span>
     </label>
     <label class="checkbox_label">
         <input type="checkbox" id="trg_showbadges" />
@@ -135,11 +131,12 @@ export async function addSettingsPanel() {
                 <tr><td><span class="trg-help-eg">{{chars: N: value}}</span></td><td>first N characters</td></tr>
                 <tr><td><span class="trg-help-eg">{{join: delim: value}}</span></td><td>join non-empty lines with delimiter</td></tr>
                 <tr><td><span class="trg-help-eg">{{replace: find: with: value}}</span></td><td>replace all occurrences of <em>find</em> with <em>with</em> (literal)</td></tr>
+                <tr><td><span class="trg-help-eg">{{match: /pattern/flags: value}}</span></td><td>regex extract — capture group 1, or full match; '' if no match</td></tr>
                 <tr><td><span class="trg-help-eg">{{default: fallback: value}}</span></td><td>use <em>value</em> if non-empty, otherwise <em>fallback</em></td></tr>
                 <tr><td><span class="trg-help-eg">{{bar: value: bucketSize: max}}</span></td><td>colon bar chart — 1 colon per full bucket, <span class="trg-help-eg">.</span> for &gt;20% remainder, <span class="trg-help-eg">+</span> on overflow</td></tr>
                 <tr><td><span class="trg-help-eg">{{pick: N: value}}</span></td><td>N random non-empty lines, newline-joined</td></tr>
                 <tr><td><span class="trg-help-eg">{{pad: N: value}}</span></td><td>right-pad to width N — truncates with … if longer</td></tr>
-                <tr><td><span class="trg-help-eg">{{hideFromUser: value}}</span></td><td>hide from chat UI — LLM still sees it in context</td></tr>
+                <tr><td><span class="trg-help-eg">{{hideFromUser: value}}</span></td><td>spoiler — hidden until clicked; LLM still sees it in context</td></tr>
             </table>
             <table class="trg-ref-table" style="margin-top:6px">
                 <tr><td><span class="trg-help-eg">{{trim: {{message}}}}</span></td><td>trimmed message text</td></tr>
@@ -152,9 +149,10 @@ export async function addSettingsPanel() {
                 <tr><td><span class="trg-help-eg">{{words: 10: {{psContent}}}}</span></td><td>first 10 words of the first prompt slot</td></tr>
                 <tr><td><span class="trg-help-eg">{{join: , : {{opts}}}}</span></td><td>collapse multi-line output to comma-separated</td></tr>
                 <tr><td><span class="trg-help-eg">{{replace: [Char]: {{char}}: {{prompt}}}}</span></td><td>swap a placeholder for the character name</td></tr>
+                <tr><td><span class="trg-help-eg">{{match: /^\w+/: {{response}}}}</span></td><td>extract the first word from an intermediate variable</td></tr>
                 <tr><td><span class="trg-help-eg">{{default: none: {{myVar}}}}</span></td><td>"none" if myVar is empty or unset</td></tr>
             </table>
-            <p style="opacity:.6;font-size:.9em"><span class="trg-help-eg">join</span> one optional leading space is padding, the rest is the literal delimiter &nbsp;·&nbsp; <span class="trg-help-eg">replace</span> / <span class="trg-help-eg">default</span> arguments may not contain a colon</p>
+            <p style="opacity:.6;font-size:.9em"><span class="trg-help-eg">join</span> one optional leading space is padding, the rest is the literal delimiter &nbsp;·&nbsp; <span class="trg-help-eg">replace</span> / <span class="trg-help-eg">default</span> arguments may not contain a colon &nbsp;·&nbsp; <span class="trg-help-eg">match</span> requires <span class="trg-help-eg">/pattern/flags</span> syntax; colons inside the pattern are fine</p>
         </div>
         </div>
 
@@ -193,6 +191,26 @@ export async function addSettingsPanel() {
                 <tr><td><span class="trg-help-eg">{{lbTitles::::rnd}}</span></td><td>one randomly chosen entry title</td></tr>
             </table>
             <p style="opacity:.6;font-size:.9em">Keyword fields also support lb tokens and <span class="trg-help-eg">{{varName}}</span> expansion.</p>
+        </div>
+        </div>
+
+        <div class="inline-drawer trg-ref-subdrawer">
+        <div class="inline-drawer-toggle inline-drawer-header trg-ref-sub-hdr">
+            Fuzzy matching <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+        </div>
+        <div class="inline-drawer-content trg-ref-sub-content">
+            <p>Jaro-Winkler similarity — designed for short proper names. Returns the best-matching candidate above threshold, or "". Query is last so colons inside it are safe.</p>
+            <div class="trg-help-eg trg-ref-block">{{fuzzy:[threshold]:[candidates]:[query]}}</div>
+            <table class="trg-ref-table">
+                <tr><td><span class="trg-help-eg">threshold</span></td><td>integer 0–100, Jaro-Winkler score × 100 &nbsp;<em style="opacity:.5">(default: 80)</em></td></tr>
+                <tr><td><span class="trg-help-eg">candidates</span></td><td>comma-separated list — compatible with <span class="trg-help-eg">{{lbTitles:…}}</span> output</td></tr>
+                <tr><td><span class="trg-help-eg">query</span></td><td>string to match — always last &nbsp;<em style="opacity:.5">(empty → returns "")</em></td></tr>
+            </table>
+            <table class="trg-ref-table" style="margin-top:6px">
+                <tr><td><span class="trg-help-eg">{{fuzzy:80:Tavern, Castle, Forest:The Tavern}}</span></td><td>returns "Tavern"</td></tr>
+                <tr><td><span class="trg-help-eg">{{fuzzy:80:{{lbTitles:::location:all:inactive}}:{{locVar}}}}</span></td><td>match LB titles against a turn variable</td></tr>
+            </table>
+            <p style="opacity:.6;font-size:.9em">Also available as: keyword/badge Fuzzy radio toggle · var-match fuzzy operator · condition: <span class="trg-help-eg">loc fuzzy "Tavern" 80</span></p>
         </div>
         </div>
 
@@ -321,12 +339,10 @@ export async function addSettingsPanel() {
 
     $('#trg_enabled').prop('checked', s.enabled);
     $('#trg_verbose').prop('checked', s.verbose);
-    $('#trg_nonstreaming').prop('checked', s.nonStreaming);
     $('#trg_showbadges').prop('checked', s.showBadges);
 
     $('#trg_enabled').on('change', function () { getSettings().enabled = this.checked; saveSettingsDebounced(); });
     $('#trg_verbose').on('change', function () { getSettings().verbose = this.checked; saveSettingsDebounced(); });
-    $('#trg_nonstreaming').on('change', function () { getSettings().nonStreaming = this.checked; saveSettingsDebounced(); });
     $('#trg_showbadges').on('change', function () {
         getSettings().showBadges = this.checked;
         saveSettingsDebounced();

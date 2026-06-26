@@ -58,15 +58,15 @@ triggers:
       examples:   { file: missing }
 
   - id: keyword-regex
-    name: "keyword trigger — regex tickbox"
-    notes: "use-regex tickbox on text mode; field: pattern; /pattern/flags or plain (case-insensitive); first capture group → {{keyword}}; replaces former mode:regex dropdown option"
+    name: "keyword trigger — regex and fuzzy modes"
+    notes: "matchMode tristate (keyword|regex|fuzzy) replaces use-regex boolean; pattern field for regex mode; fuzzy-threshold field for fuzzy mode (Jaro-Winkler, default 80); /pattern/flags or plain (case-insensitive); first capture group → {{keyword}}; legacy use-regex:true migrates to matchMode:'regex' at read time"
     coverage:
       test:       { file: tests/triggers.test.js,   touched: 2026-06-21 }
-      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-21 }
-      user-guide: { file: docs/user-guide.md,       touched: 2026-06-21 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-26 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-26 }
       export:     { file: settings/format.js,       touched: 2026-06-21 }
       schema:     { file: docs/triggers.schema.json, touched: missing }
-      # schema has mode:"regex" (legacy) but not the current use-regex:true + pattern form
+      # schema has mode:"regex" (legacy) but not the current matchMode tristate
       examples:   { file: [docs/examples/anti-slop.json, docs/examples/hp-tracker.json], touched: 2026-06-21 }
 
   - id: event-message-received
@@ -126,24 +126,24 @@ triggers:
 
   - id: var-match
     name: "var-match trigger"
-    notes: "fields: var, operator, value, use-regex; 7 operators (equals/not-equals/contains/not-empty/empty/set/not-set); matches-regex operator removed — replaced by use-regex tickbox on the value field, enabling not-equals+regex as a new combination; empty fires when var is set but blank (complement of not-empty)"
+    notes: "fields: var, operator, value, use-regex, fuzzy-threshold; 8 operators (equals/not-equals/contains/not-empty/empty/set/not-set/fuzzy); fuzzy operator uses Jaro-Winkler similarity with optional threshold (default 80); use-regex tickbox enables regex matching for equals/not-equals/contains; empty fires when var is set but blank (complement of not-empty)"
     coverage:
       test:       { file: tests/triggers.test.js,   touched: 2026-06-23 }
       e2e:        { file: tests/e2e.test.js,         touched: 2026-06-23 }
-      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-23 }
-      user-guide: { file: docs/user-guide.md,       touched: 2026-06-21 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-26 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-26 }
       export:     { file: settings/format.js,       touched: 2026-06-23 }
       schema:     { file: docs/triggers.schema.json, touched: missing }
-      # schema lists stale "matches" operator and is missing use-regex field
+      # schema lists stale "matches" operator and is missing use-regex / fuzzy fields
       examples:   { file: docs/examples/mood-routing.json, touched: 2026-06-21 }
 
   - id: condition
     name: "condition trigger"
-    notes: "field: expression; operators < > <= >= = != matches contains is empty in; chatvar::/globalvar:: prefixes"
+    notes: "field: expression; operators < > <= >= = != matches contains is empty in fuzzy; chatvar::/globalvar:: prefixes; fuzzy: optional threshold suffix (default 80)"
     coverage:
       test:       { file: tests/triggers.test.js,   touched: 2026-06-20 }
-      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
-      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-26 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-26 }
       export:     { file: settings/format.js,       touched: 2026-06-20 }
       schema:     { file: docs/triggers.schema.json, touched: 2026-06-21 }
       examples:   { file: [docs/examples/hp-tracker.json, docs/examples/narrator-mode.json], touched: 2026-06-21 }
@@ -172,14 +172,14 @@ triggers:
 
   - id: badge-inline
     name: "badge trigger — inline style"
-    notes: "fields: keywords, color, case-sensitive, click (keyword mode) OR use-regex + pattern (regex mode); wraps matched words/patterns in message as clickable spans"
+    notes: "fields: keywords, color, case-sensitive, click, match-mode (keyword/regex/fuzzy), pattern, fuzzy-threshold; wraps matched words/patterns in message as clickable spans; three-way radio replaces use-regex boolean"
     coverage:
       test:       { file: tests/badge-defs.test.js, touched: 2026-06-21 }
-      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-21 }
-      user-guide: { file: docs/user-guide.md,       touched: 2026-06-21 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-26 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-26 }
       export:     { file: settings/format.js,       touched: 2026-06-21 }
       schema:     { file: docs/triggers.schema.json, touched: missing }
-      # schema has keywords+case-sensitive for inline but is missing use-regex+pattern regex mode
+      # schema has keywords+case-sensitive for inline but is missing match-mode field
       examples:   { file: missing }
 
   - id: badge-graph
@@ -406,6 +406,26 @@ template-variables:
       var-picker: { file: actions/var-legend.js,    touched: 2026-06-21 }
       examples:   { file: missing }
 
+  - id: fuzzy
+    name: "generic fuzzy matching — {{fuzzy:}} transform, trigger matchMode, condition operator"
+    notes: >
+      Jaro-Winkler similarity (0–1, prefix bonus) used across four integration points:
+      (1) {{fuzzy:threshold:candidates:query}} template transform — scores each comma-separated candidate
+      against query, returns best above threshold or ''; candidates compatible with {{lbTitles:…}} output;
+      (2) matchMode:'fuzzy' in keyword and inline badge triggers — radio toggle (keyword|regex|fuzzy)
+      replaces the old use-regex boolean; sliding word n-gram window scans generation text;
+      (3) fuzzy operator in var-match — optional fuzzy-threshold field (default 80);
+      (4) varName fuzzy "target" [threshold] in condition expressions;
+      implementations: triggers/kw-match.js (jaroWinkler, fuzzyMatchText, findAllMatches),
+      actions/transforms.js ({{fuzzy:}}), triggers/varMatch.js, triggers/keyword.js,
+      triggers/badge.js, badge.js (root), actions/condition.js
+    coverage:
+      test:       { file: tests/fuzzy.test.js,                          touched: 2026-06-26 }
+      syntax:     { file: docs/ruleset-syntax.md,                       touched: 2026-06-26 }
+      user-guide: { file: docs/user-guide.md,                           touched: 2026-06-26 }
+      cheatsheet: { file: settings/panel.js,                            touched: 2026-06-26 }
+      examples:   { file: docs/examples/location-tracker.json,          touched: 2026-06-26 }
+
   - id: ps-queries
     name: "live prompt layer — {{psName}}, {{psContent}}, {{psRows}}"
     notes: >
@@ -484,10 +504,15 @@ template-variables:
 
   - id: conditionals
     name: "{{if condition}} … {{/if}} blocks"
-    notes: "operators: matches/contains/is/in()/empty; AND OR ! (); non-nestable; numeric comparisons via chatvar::/globalvar::"
+    notes: >
+      operators: matches/contains/is/in()/empty; AND OR ! (); non-nestable; numeric comparisons
+      via chatvar::/globalvar::; variable names accept bare form (mood) or wrapped form ({{mood}})
+      — both produce identical results; 2026-06-26: wrapped {{varName}} form added to condition
+      evaluator (_VNAME regex in condition.js) and {{if}} regex upgraded to allow nested {{}}
+      in the condition string
     coverage:
-      test:       { file: tests/template.test.js,   touched: 2026-06-20 }
-      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
+      test:       { file: [tests/math-logic.test.js, tests/template.test.js], touched: 2026-06-26 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-26 }
       user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
       cheatsheet: { file: settings/panel.js,        touched: 2026-06-20 }
       var-picker: { file: missing }
@@ -499,21 +524,36 @@ template-variables:
 transforms:
 
   - id: string-transforms
-    name: "string transforms — trim, upper, lower, cap, len, lines, last, nth, words, chars, join, replace, default, bar, pad, pick"
-    notes: "run after all variable substitution; inner {{varName}} resolves first; all 16 transforms confirmed in transforms.test.js TRANSFORM_PREFIXES test; format.test.js round-trip verifies transform syntax in template string fields survives import→export unchanged across all action types that carry template fields"
+    name: "string transforms — trim, upper, lower, cap, len, lines, last, nth, words, chars, join, replace, match, default, bar, pad, pick, fuzzy"
+    notes: "run after all variable substitution; inner {{varName}} resolves first; all 19 transforms (including fuzzy:) confirmed in transforms.test.js TRANSFORM_PREFIXES test; format.test.js round-trip verifies transform syntax in template string fields survives import→export unchanged across all action types that carry template fields"
     coverage:
-      test:       { file: tests/transforms.test.js, touched: 2026-06-23 }
-      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-23 }
-      user-guide: { file: docs/user-guide.md,       touched: 2026-06-23 }
-      cheatsheet: { file: settings/panel.js,        touched: 2026-06-23 }
+      test:       { file: tests/transforms.test.js, touched: 2026-06-26 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-26 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-26 }
+      cheatsheet: { file: settings/panel.js,        touched: 2026-06-26 }
       examples:   { file: [docs/examples/context-visualizer.json, docs/examples/continuation-badges.json], touched: 2026-06-21 }
+
+  - id: match-transform
+    name: "{{match: /pattern/flags: val}} transform"
+    notes: >
+      regex extraction from a resolved variable; /pattern/flags syntax required (slashes bound the pattern,
+      so colons inside the regex are safe); returns capture group 1 if present, full match if no groups,
+      empty string on no match or bad pattern; runs after all variable substitution; intended for parsing
+      one intermediate turn variable into another via compose
+    coverage:
+      test:       { file: tests/transforms.test.js, touched: 2026-06-26 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-26 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-26 }
+      cheatsheet: { file: settings/panel.js,        touched: 2026-06-26 }
+      examples:   { file: missing }
 
   - id: hide-from-user
     name: "{{hideFromUser:}} transform"
     notes: >
-      wraps content in <span class="trg-hide-user">; DOMPurify renames the class to
-      custom-trg-hide-user at render time; style.css targets .custom-trg-hide-user with
-      display:none !important; LLM still receives the raw HTML in context via msg.mes;
+      wraps content in <details><summary>▸</summary>…</details> (no class, keeps LLM-visible markup minimal);
+      style.css targets .mes_text details > summary to style the toggle (opacity, no marker);
+      details (block-level) used so multi-paragraph content with blank lines works (showdown passes block HTML raw);
+      user can click the ▸ toggle to reveal content; LLM still receives the raw HTML in context via msg.mes;
       works in any string field (Principle 13)
     coverage:
       test:       { file: tests/transforms.test.js, touched: 2026-06-23 }

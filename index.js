@@ -18,7 +18,7 @@
  */
 
 import { eventSource, event_types }                                        from '../../../../script.js';
-import { onGenerationStarted, onStreamToken, onMessageReceived, onCharacterMessageRendered, onMessageSwiped, onChatLoaded, fireRuleManually, reinjectRuleBadges, reinjectInlineBadges } from './engine.js';
+import { onGenerationStarted, onStreamToken, onMessageReceived, onCharacterMessageRendered, onMessageSwiped, onChatLoaded, fireRuleManually, cancelCurrentOperations, reinjectRuleBadges, reinjectInlineBadges } from './engine.js';
 import { clearAllMessageBadges, setBadge, reinjectAllBadges, removeAllBadges } from './badge.js';
 import { loadSettings }                                                     from './settings/storage.js';
 import { addSettingsPanel }                                                from './settings/panel.js';
@@ -50,6 +50,10 @@ eventSource.on(event_types.MESSAGE_SWIPED, (messageId) => {
 $(document).on('click', '.trg-badge', async function () {
     const messageId = parseInt($(this).closest('.mes').attr('mesid'), 10);
     if (isNaN(messageId)) return;
+    if ($(this).hasClass('trg-badge-thinking')) {
+        cancelCurrentOperations();
+        return;
+    }
     setBadge(messageId, 'unchanged');
     await onMessageReceived(messageId);
 });

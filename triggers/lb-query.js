@@ -1,6 +1,6 @@
 /**
  * @file triggers/lb-query.js
- * @stamp {"utc":"2026-06-21T01:00:00.000Z"}
+ * @stamp {"utc":"2026-06-26T00:00:00.000Z"}
  * @architectural-role IO — lorebook read access: entry queries, keyword cache, token resolution
  * @description
  * Provides read-only access to ST's lorebook data for use by trigger and action registry entries.
@@ -14,7 +14,7 @@
  * matchWiKw(text, {raw, regex})               → boolean
  * getLbEntryByName(entryName, lbName?)        → Promise<entry|null>
  * getLbNames()                                → string[]  sorted list of all lorebook names on disk
- * resolveLbQueryTokens(template, vars?)       → Promise<string>  expands {{lbTitles:…}} etc.
+ * resolveLbQueryTokens(template, vars?)       → Promise<string>  expands {{lbTitles:…}}, {{lbKeys:…}}, {{lbContent:…}}, {{lbBooks:…}}
  *
  * @contract
  *   assertions:
@@ -293,6 +293,7 @@ export async function resolveLbQueryTokens(template, vars = {}) {
     const resolved = await Promise.all(tokens.map(async m => {
         const type   = m[1];
         const parts  = m[2] ? m[2].slice(1).split(':') : [];
+
         const lbArg    = parseArg(parts[0]);
         const titleArg = parseArg(parts[1]);
         const keyArg   = parseArg(parts[2]);
