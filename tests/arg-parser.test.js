@@ -149,6 +149,25 @@ describe('parseArg — AND(...)', () => {
         expect(parseArg('and(a, b)').type).toBe('AND');
         expect(parseArg('And(a, b)').type).toBe('AND');
     });
+    it('AND(a, b) !c — text after closing paren is not valid AND syntax; degrades to OR', () => {
+        // !parent sits outside the parens so the combinator regex fails to match.
+        // The whole string is parsed as OR, not AND.
+        const r = parseArg('AND(chat123, location) !parent');
+        expect(r.type).toBe('OR');
+    });
+    it('AND(a, b, c) !d — with three args the middle item "location" splits cleanly as a plain OR inclusion', () => {
+        // Three comma args: 'AND(chat123' / 'location' / 'Tavern) !parent'.
+        // The middle token 'location' is a verbatim positive OR item — any entry
+        // with that key passes the filter, causing all location entries to match.
+        const r = parseArg('AND(chat123, location, Tavern) !parent');
+        expect(r.items.some(i => !i.negate && i.value === 'location')).toBe(true);
+    });
+    it('negation must be inside AND() — AND(a, b, !c) is the correct form', () => {
+        const r = parseArg('AND(chat123, location, !parent)');
+        expect(r.type).toBe('AND');
+        const neg = r.items.find(i => i.value === 'parent');
+        expect(neg?.negate).toBe(true);
+    });
 });
 
 // ---------------------------------------------------------------------------

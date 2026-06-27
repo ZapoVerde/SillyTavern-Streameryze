@@ -717,6 +717,87 @@ describe('variable resolution — scope position', () => {
     });
 });
 
+// ---------------------------------------------------------------------------
+// AND key filter — location-tracker pattern
+// Exercises the chat_id namespacing + parent/sub-location split used by the
+// location-tracker example ruleset.  Uses active scope for fixture simplicity;
+// the filter semantics are scope-independent.
+// ---------------------------------------------------------------------------
+
+const CHAT_A = 'aria-2026-01-01@10-00-00';
+const CHAT_B = 'bella-2026-01-01@10-00-00';
+
+// Entries mirror what the location-tracker update action creates:
+//   parent locations  → keys: [chat_id, 'location', 'parent']
+//   sub-locations     → keys: [chat_id, 'location', <parent name>]
+const LOC_FIXTURES = [
+    { comment: 'Tavern',       key: [CHAT_A, 'location', 'parent'],  world: 'trg_utility', disable: false, content: 'A cozy inn.' },
+    { comment: 'Tavern - Bar', key: [CHAT_A, 'location', 'Tavern'],  world: 'trg_utility', disable: false, content: 'The bar.' },
+    { comment: 'Forest',       key: [CHAT_A, 'location', 'parent'],  world: 'trg_utility', disable: false, content: 'Dark trees.' },
+    { comment: 'Castle',       key: [CHAT_B, 'location', 'parent'],  world: 'trg_utility', disable: false, content: 'A fortress.' },
+];
+
+describe('AND key filter — location-tracker pattern', () => {
+    beforeEach(() => {
+        clearWiCache();
+        vi.mocked(getSortedEntries).mockResolvedValue(LOC_FIXTURES);
+    });
+
+    it('AND(chat_id, location, parent) returns only this chat\'s parent locations', async () => {
+        const r = await resolveLbQueryTokens(
+            '{{lbTitles:::AND({{chat_id}}, location, parent)}}',
+            { chat_id: CHAT_A },
+        );
+        expect(r).toBe('Tavern, Forest');
+        expect(r).not.toContain('Castle');        // other chat excluded
+        expect(r).not.toContain('Tavern - Bar');  // sub-location excluded
+    });
+
+    it('AND(chat_id, location, parent) with wrong chat_id returns nothing', async () => {
+        const r = await resolveLbQueryTokens(
+            '{{lbTitles:::AND({{chat_id}}, location, parent)}}',
+            { chat_id: 'no-such-chat' },
+        );
+        expect(r).toBe('');
+    });
+
+    it('empty chat_id causes AND to degrade — all-chat parent locations bleed through', async () => {
+        // When chat_id is '' resolveArg drops that item entirely.
+        // Remaining positives are just 'location' + 'parent' — all chats match.
+        const r = await resolveLbQueryTokens(
+            '{{lbTitles:::AND({{chat_id}}, location, parent)}}',
+            { chat_id: '' },
+        );
+        expect(r).toContain('Tavern');
+        expect(r).toContain('Castle'); // other-chat location bleeds in
+    });
+
+    it('AND(chat_id, location, {{parentLoc}}) !parent — broken syntax: !parent outside AND() degrades to OR, all location entries pass', async () => {
+        // This is the buggy form from location-tracker.json line 214.
+        // The string ends with '!parent', not ')', so parseArg does not recognise AND.
+        // 'location' becomes a plain OR inclusion and every location entry matches.
+        const r = await resolveLbQueryTokens(
+            '{{lbTitles:::AND({{chat_id}}, location, {{parentLoc}}) !parent}}',
+            { chat_id: CHAT_A, parentLoc: 'Tavern' },
+        );
+        expect(r).toContain('Castle');       // cross-chat bleed
+        expect(r).toContain('Tavern - Bar'); // parent exclusion did not apply
+        expect(r).toContain('Tavern');       // parent itself not excluded
+    });
+
+    it('AND(chat_id, location, {{parentLoc}}, !parent) — correct syntax returns only sub-locations of the given parent', async () => {
+        // !parent is now inside AND() — the fix for location-tracker.json.
+        const r = await resolveLbQueryTokens(
+            '{{lbTitles:::AND({{chat_id}}, location, {{parentLoc}}, !parent)}}',
+            { chat_id: CHAT_A, parentLoc: 'Tavern' },
+        );
+        expect(r).toBe('Tavern - Bar');
+        expect(r).not.toContain('Castle');   // other chat excluded
+        expect(r).not.toContain('Tavern,'); // parent itself excluded by !parent
+        expect(r).not.toContain('Forest');   // different parent
+    });
+});
+
 describe('variable resolution — mode position', () => {
     it('{{var}} in mode position resolves from vars', async () => {
         vi.mocked(getSortedEntries).mockResolvedValue(ALL);
