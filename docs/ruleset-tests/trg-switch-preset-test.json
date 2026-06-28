@@ -1,0 +1,43 @@
+{
+  "version": 2,
+  "type": "ruleset",
+  "name": "switch-preset test",
+  "note": "Smoke test for the switch-preset action. T1 switches away from the active preset and persists the previous name to a global var. T2 reads that global var back to verify persistence. T3 restores the original preset. Run a turn between T1 and T3 to verify the new preset is active — check the CC Presets dropdown after each badge press. Replace 'Comfy 1' with any preset from your dropdown.",
+  "rules": [
+    {
+      "name": "T1: switch to alternate",
+      "note": "Switches to the alternate preset, captures the previous name in turn var prevPreset, persists it to global ST var trgPrevPreset so it survives the turn boundary. Toast shows what was captured.",
+      "triggers": [
+        { "type": "badge", "style": "top", "label": "T1 → Comfy 1", "color": "#1565c0", "click": "fire" }
+      ],
+      "actions": [
+        { "type": "switch-preset", "preset": "Comfy 1", "var": "prevPreset" },
+        { "type": "set-var", "scope": "global", "var": "trgPrevPreset", "value": "{{prevPreset}}" },
+        { "type": "toast", "level": "success", "title": "T1: switched to Comfy 1", "message": "prev = {{default: (empty): {{prevPreset}}}}{{if !prevPreset empty}} [PASS]{{/if}}" }
+      ]
+    },
+    {
+      "name": "T2: verify saved prev survives turn boundary",
+      "note": "Reads trgPrevPreset from the global ST var. Verify the displayed name matches what was active before T1 fired.",
+      "triggers": [
+        { "type": "badge", "style": "top", "label": "T2 check prev", "color": "#555555", "click": "fire" }
+      ],
+      "actions": [
+        { "type": "compose", "var": "savedPreset", "template": "{{globalvar::trgPrevPreset}}" },
+        { "type": "toast", "level": "info", "title": "T2: saved prev", "message": "trgPrevPreset = {{default: (unset): {{savedPreset}}}}{{if !savedPreset empty}} [PASS]{{/if}}" }
+      ]
+    },
+    {
+      "name": "T3: restore original preset",
+      "note": "Reads trgPrevPreset from global var into a turn var, then switches back. The {{if}} confirms the saved name was non-empty when the switch fired.",
+      "triggers": [
+        { "type": "badge", "style": "top", "label": "T3 ← restore", "color": "#2e7d32", "click": "fire" }
+      ],
+      "actions": [
+        { "type": "compose", "var": "savedPreset", "template": "{{globalvar::trgPrevPreset}}" },
+        { "type": "switch-preset", "preset": "{{savedPreset}}" },
+        { "type": "toast", "level": "success", "title": "T3: restored", "message": "→ {{default: (unset): {{savedPreset}}}}{{if !savedPreset empty}} [PASS]{{/if}}" }
+      ]
+    }
+  ]
+}

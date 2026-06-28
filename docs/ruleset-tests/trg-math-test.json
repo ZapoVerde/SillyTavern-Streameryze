@@ -1,0 +1,141 @@
+{
+  "version": 2,
+  "type": "ruleset",
+  "name": "Math functions test",
+  "note": "Regression suite for {{math:}} functions added 2026-06-28: floor/ceil/round/abs/min/max/sign/clamp + ternary (? :). Fire each badge independently. Every toast should show [PASS]. The safety badge (red) should show (empty) [PASS] — if it shows a number, the char-safety check has regressed.",
+  "rules": [
+    {
+      "name": "Test 1: floor / ceil / round / abs",
+      "note": "Four rounding/magnitude functions. Each compose writes one result; each toast verifies it.",
+      "triggers": [
+        { "type": "badge", "style": "top", "label": "T1 rounding", "color": "#2e7d32", "click": "fire" }
+      ],
+      "actions": [
+        { "type": "compose", "var": "a", "template": "{{math: floor(4.9)}}" },
+        { "type": "toast", "level": "info", "title": "T1a: floor(4.9)", "message": "floor(4.9) → {{a}}{{if a = \"4\"}} [PASS]{{/if}}" },
+        { "type": "compose", "var": "b", "template": "{{math: ceil(4.1)}}" },
+        { "type": "toast", "level": "info", "title": "T1b: ceil(4.1)", "message": "ceil(4.1) → {{b}}{{if b = \"5\"}} [PASS]{{/if}}" },
+        { "type": "compose", "var": "c", "template": "{{math: round(4.5)}}" },
+        { "type": "toast", "level": "info", "title": "T1c: round(4.5)", "message": "round(4.5) → {{c}}{{if c = \"5\"}} [PASS]{{/if}}" },
+        { "type": "compose", "var": "d", "template": "{{math: abs(-7)}}" },
+        { "type": "toast", "level": "info", "title": "T1d: abs(-7)", "message": "abs(-7) → {{d}}{{if d = \"7\"}} [PASS]{{/if}}" }
+      ]
+    },
+    {
+      "name": "Test 2: min / max / clamp",
+      "note": "clamp tested at three positions: within bounds, below floor, above ceiling.",
+      "triggers": [
+        { "type": "badge", "style": "top", "label": "T2 range", "color": "#2e7d32", "click": "fire" }
+      ],
+      "actions": [
+        { "type": "compose", "var": "a", "template": "{{math: min(3, 7)}}" },
+        { "type": "toast", "level": "info", "title": "T2a: min(3,7)", "message": "min(3,7) → {{a}}{{if a = \"3\"}} [PASS]{{/if}}" },
+        { "type": "compose", "var": "b", "template": "{{math: max(3, 7)}}" },
+        { "type": "toast", "level": "info", "title": "T2b: max(3,7)", "message": "max(3,7) → {{b}}{{if b = \"7\"}} [PASS]{{/if}}" },
+        { "type": "compose", "var": "c", "template": "{{math: clamp(5, 0, 10)}}" },
+        { "type": "toast", "level": "info", "title": "T2c: clamp(5,0,10) in-bounds", "message": "clamp(5,0,10) → {{c}}{{if c = \"5\"}} [PASS]{{/if}}" },
+        { "type": "compose", "var": "d", "template": "{{math: clamp(-3, 0, 10)}}" },
+        { "type": "toast", "level": "info", "title": "T2d: clamp(-3,0,10) below floor", "message": "clamp(-3,0,10) → {{d}}{{if d = \"0\"}} [PASS]{{/if}}" },
+        { "type": "compose", "var": "e", "template": "{{math: clamp(15, 0, 10)}}" },
+        { "type": "toast", "level": "info", "title": "T2e: clamp(15,0,10) above ceiling", "message": "clamp(15,0,10) → {{e}}{{if e = \"10\"}} [PASS]{{/if}}" }
+      ]
+    },
+    {
+      "name": "Test 3: sign",
+      "note": "Positive, negative, and zero. Uses = operator (not is) because word-boundary matching is unreliable for negative number strings.",
+      "triggers": [
+        { "type": "badge", "style": "top", "label": "T3 sign", "color": "#2e7d32", "click": "fire" }
+      ],
+      "actions": [
+        { "type": "compose", "var": "a", "template": "{{math: sign(42)}}" },
+        { "type": "toast", "level": "info", "title": "T3a: sign(42)", "message": "sign(42) → {{a}}{{if a = \"1\"}} [PASS]{{/if}}" },
+        { "type": "compose", "var": "b", "template": "{{math: sign(-5)}}" },
+        { "type": "toast", "level": "info", "title": "T3b: sign(-5)", "message": "sign(-5) → {{b}}{{if b = \"-1\"}} [PASS]{{/if}}" },
+        { "type": "compose", "var": "c", "template": "{{math: sign(0)}}" },
+        { "type": "toast", "level": "info", "title": "T3c: sign(0)", "message": "sign(0) → {{c}}{{if c = \"0\"}} [PASS]{{/if}}" }
+      ]
+    },
+    {
+      "name": "Test 4: ternary operator",
+      "note": "True branch, false branch, >= exact boundary (5>=5 → true), and >= miss (4>=5 → false).",
+      "triggers": [
+        { "type": "badge", "style": "top", "label": "T4 ternary", "color": "#2e7d32", "click": "fire" }
+      ],
+      "actions": [
+        { "type": "compose", "var": "a", "template": "{{math: 10 > 5 ? 1 : 0}}" },
+        { "type": "toast", "level": "info", "title": "T4a: 10>5 → true branch", "message": "10>5?1:0 → {{a}}{{if a = \"1\"}} [PASS]{{/if}}" },
+        { "type": "compose", "var": "b", "template": "{{math: 3 > 5 ? 1 : 0}}" },
+        { "type": "toast", "level": "info", "title": "T4b: 3>5 → false branch", "message": "3>5?1:0 → {{b}}{{if b = \"0\"}} [PASS]{{/if}}" },
+        { "type": "compose", "var": "c", "template": "{{math: 5 >= 5 ? 2 : 1}}" },
+        { "type": "toast", "level": "info", "title": "T4c: 5>=5 → takes >= branch", "message": "5>=5?2:1 → {{c}}{{if c = \"2\"}} [PASS]{{/if}}" },
+        { "type": "compose", "var": "d", "template": "{{math: 4 >= 5 ? 2 : 1}}" },
+        { "type": "toast", "level": "info", "title": "T4d: 4>=5 → false", "message": "4>=5?2:1 → {{d}}{{if d = \"1\"}} [PASS]{{/if}}" }
+      ]
+    },
+    {
+      "name": "Test 5: nested ternary (three-way degree)",
+      "note": "Nested ternary encoding a three-tier degree scale. Degree 2 = 3x ratio, degree 1 = 2x ratio, degree 0 = slight edge.",
+      "triggers": [
+        { "type": "badge", "style": "top", "label": "T5 nested ternary", "color": "#2e7d32", "click": "fire" }
+      ],
+      "actions": [
+        { "type": "compose", "var": "a", "template": "{{math: 15 >= 5*3 ? 2 : 15 >= 5*2 ? 1 : 0}}" },
+        { "type": "toast", "level": "info", "title": "T5a: 15 vs 5 → degree 2", "message": "15 vs 5×3 → {{a}}{{if a = \"2\"}} [PASS]{{/if}}" },
+        { "type": "compose", "var": "b", "template": "{{math: 12 >= 5*3 ? 2 : 12 >= 5*2 ? 1 : 0}}" },
+        { "type": "toast", "level": "info", "title": "T5b: 12 vs 5 → degree 1", "message": "12 vs 5×2 → {{b}}{{if b = \"1\"}} [PASS]{{/if}}" },
+        { "type": "compose", "var": "c", "template": "{{math: 7 >= 5*3 ? 2 : 7 >= 5*2 ? 1 : 0}}" },
+        { "type": "toast", "level": "info", "title": "T5c: 7 vs 5 → degree 0", "message": "7 vs 5×1+ → {{c}}{{if c = \"0\"}} [PASS]{{/if}}" }
+      ]
+    },
+    {
+      "name": "Test 6: function composition",
+      "note": "Functions wrapping sub-expressions: floor over division, sign multiplied out.",
+      "triggers": [
+        { "type": "badge", "style": "top", "label": "T6 composition", "color": "#2e7d32", "click": "fire" }
+      ],
+      "actions": [
+        { "type": "compose", "var": "a", "template": "{{math: floor(10 / 3)}}" },
+        { "type": "toast", "level": "info", "title": "T6a: floor(10/3)", "message": "floor(10/3) → {{a}}{{if a = \"3\"}} [PASS]{{/if}}" },
+        { "type": "compose", "var": "b", "template": "{{math: sign(-5) * 10}}" },
+        { "type": "toast", "level": "info", "title": "T6b: sign(-5)*10", "message": "sign(-5)*10 → {{b}}{{if b = \"-10\"}} [PASS]{{/if}}" }
+      ]
+    },
+    {
+      "name": "Test 7: degree formula with turn vars",
+      "note": "Full ratio-based degree formula reading from turn variables. Composes $atck and $def first, then reads them inside the math expression. Proves variable resolution works correctly with all new functions in combination.",
+      "triggers": [
+        { "type": "badge", "style": "top", "label": "T7 degree formula", "color": "#1565c0", "click": "fire" }
+      ],
+      "actions": [
+        { "type": "compose", "var": "$atck", "template": "15" },
+        { "type": "compose", "var": "$def",  "template": "5" },
+        { "type": "compose", "var": "degree", "template": "{{math: sign({{$atck}} - {{$def}}) * min(2, floor(max({{$atck}}, {{$def}}) / min({{$atck}}, {{$def}}) - 1))}}" },
+        { "type": "toast", "level": "info", "title": "T7: degree(atk=15, def=5)", "message": "atk={{$atck}} def={{$def}} → degree={{degree}}{{if degree = \"2\"}} [PASS]{{/if}}" }
+      ]
+    },
+    {
+      "name": "Test 8: safety — unknown identifier blocked",
+      "note": "{{math:}} must return empty string when the expression contains an unknown identifier. If this shows a number instead of (empty), the char-safety check has regressed.",
+      "triggers": [
+        { "type": "badge", "style": "top", "label": "T8 safety", "color": "#b71c1c", "click": "fire" }
+      ],
+      "actions": [
+        { "type": "compose", "var": "a", "template": "{{default: (empty): {{math: evil + 1}}}}" },
+        { "type": "toast", "level": "info", "title": "T8: unknown identifier → empty", "message": "math: evil+1 → {{a}}{{if a = \"(empty)\"}} [PASS]{{/if}}" }
+      ]
+    },
+    {
+      "name": "Test 9: rand() and randint()",
+      "note": "rand() verified as non-empty (a float was produced). randint(5,5) uses a degenerate range so the result is always 5 — deterministic without mocking.",
+      "triggers": [
+        { "type": "badge", "style": "top", "label": "T9 random", "color": "#2e7d32", "click": "fire" }
+      ],
+      "actions": [
+        { "type": "compose", "var": "a", "template": "{{math: rand()}}" },
+        { "type": "toast", "level": "info", "title": "T9a: rand() non-empty", "message": "rand() → {{default: (empty): {{a}}}}{{if !a empty}} [PASS]{{/if}}" },
+        { "type": "compose", "var": "b", "template": "{{math: randint(5, 5)}}" },
+        { "type": "toast", "level": "info", "title": "T9b: randint(5,5) always 5", "message": "randint(5,5) → {{b}}{{if b = \"5\"}} [PASS]{{/if}}" }
+      ]
+    }
+  ]
+}

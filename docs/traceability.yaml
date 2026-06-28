@@ -26,6 +26,13 @@
 # Omitted key = not applicable for that feature. A YAML flow sequence means multiple
 # example files cover it — all must be reviewed when the feature changes.
 #
+# `examples.validated` — date a human ran the example ruleset in ST and confirmed
+# the feature behaved correctly (badges fired, toasts showed expected output). This
+# is distinct from automated tests: it is a user sign-off on real ST behaviour.
+# `missing` means the ruleset has not been manually verified in ST.
+# A stale validated date (older than touched) means the file changed since it was
+# last confirmed to work — re-run before relying on it.
+#
 # Special values:
 #   missing    — feature exists in engine but is absent from this artifact (gap)
 #   undocumented — present in code/tests but deliberately or accidentally absent
@@ -44,7 +51,7 @@ triggers:
       user-guide: { file: docs/user-guide.md,                        touched: 2026-06-20 }
       export:     { file: settings/format.js,                        touched: 2026-06-20 }
       schema:     { file: docs/triggers.schema.json,                 touched: 2026-06-21 }
-      examples:   { file: docs/examples/sentinel-stop-and-strip.json, touched: 2026-06-21 }
+      examples:   { file: docs/examples/sentinel-stop-and-strip.json, touched: 2026-06-21, validated: missing }
 
   - id: keyword-lorebook
     name: "keyword trigger — lorebook mode"
@@ -67,7 +74,7 @@ triggers:
       export:     { file: settings/format.js,       touched: 2026-06-21 }
       schema:     { file: docs/triggers.schema.json, touched: missing }
       # schema has mode:"regex" (legacy) but not the current matchMode tristate
-      examples:   { file: [docs/examples/anti-slop.json, docs/examples/hp-tracker.json], touched: 2026-06-21 }
+      examples:   { file: [docs/examples/anti-slop.json, docs/examples/hp-tracker.json], touched: 2026-06-21, validated: missing }
 
   - id: event-message-received
     name: "event trigger — MESSAGE_RECEIVED"
@@ -78,7 +85,7 @@ triggers:
       user-guide: { file: docs/user-guide.md,          touched: 2026-06-20 }
       export:     { file: settings/format.js,          touched: 2026-06-20 }
       schema:     { file: docs/triggers.schema.json,   touched: 2026-06-21 }
-      examples:   { file: [docs/examples/context-visualizer.json, docs/examples/continuation-badges.json, docs/examples/mood-routing.json, docs/examples/narrator-mode.json, docs/examples/session-memory.json], touched: 2026-06-21 }
+      examples:   { file: [docs/examples/context-visualizer.json, docs/examples/continuation-badges.json, docs/examples/mood-routing.json, docs/examples/narrator-mode.json, docs/examples/session-memory.json], touched: 2026-06-21, validated: missing }
 
   - id: event-generation-started
     name: "event trigger — GENERATION_STARTED"
@@ -135,7 +142,7 @@ triggers:
       export:     { file: settings/format.js,       touched: 2026-06-23 }
       schema:     { file: docs/triggers.schema.json, touched: missing }
       # schema lists stale "matches" operator and is missing use-regex / fuzzy fields
-      examples:   { file: docs/examples/mood-routing.json, touched: 2026-06-21 }
+      examples:   { file: docs/examples/mood-routing.json, touched: 2026-06-21, validated: missing }
 
   - id: condition
     name: "condition trigger"
@@ -146,7 +153,7 @@ triggers:
       user-guide: { file: docs/user-guide.md,       touched: 2026-06-26 }
       export:     { file: settings/format.js,       touched: 2026-06-20 }
       schema:     { file: docs/triggers.schema.json, touched: 2026-06-21 }
-      examples:   { file: [docs/examples/hp-tracker.json, docs/examples/narrator-mode.json], touched: 2026-06-21 }
+      examples:   { file: [docs/examples/hp-tracker.json, docs/examples/narrator-mode.json], touched: 2026-06-21, validated: missing }
 
   - id: badge-top
     name: "badge trigger — top style"
@@ -157,7 +164,7 @@ triggers:
       user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
       export:     { file: settings/format.js,       touched: 2026-06-20 }
       schema:     { file: docs/triggers.schema.json, touched: 2026-06-21 }
-      examples:   { file: docs/examples/narrator-mode.json, touched: 2026-06-21 }
+      examples:   { file: docs/examples/narrator-mode.json, touched: 2026-06-21, validated: missing }
 
   - id: badge-bottom
     name: "badge trigger — bottom style"
@@ -168,7 +175,7 @@ triggers:
       user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
       export:     { file: settings/format.js,       touched: 2026-06-20 }
       schema:     { file: docs/triggers.schema.json, touched: 2026-06-21 }
-      examples:   { file: [docs/examples/context-visualizer.json, docs/examples/continuation-badges.json], touched: 2026-06-21 }
+      examples:   { file: [docs/examples/context-visualizer.json, docs/examples/continuation-badges.json], touched: 2026-06-21, validated: missing }
 
   - id: badge-inline
     name: "badge trigger — inline style"
@@ -191,7 +198,7 @@ triggers:
       user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
       export:     { file: settings/format.js,       touched: 2026-06-20 }
       schema:     { file: docs/triggers.schema.json, touched: missing }
-      examples:   { file: docs/examples/context-visualizer.json, touched: 2026-06-21 }
+      examples:   { file: docs/examples/context-visualizer.json, touched: 2026-06-21, validated: missing }
 
   - id: probability
     name: "probability trigger"
@@ -217,7 +224,7 @@ actions:
       user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
       export:     { file: settings/format.js,       touched: 2026-06-20 }
       schema:     { file: docs/triggers.schema.json, touched: 2026-06-21 }
-      examples:   { file: docs/examples/sentinel-stop-and-strip.json, touched: 2026-06-21 }
+      examples:   { file: docs/examples/sentinel-stop-and-strip.json, touched: 2026-06-21, validated: missing }
 
   - id: call-llm
     name: "call-llm action"
@@ -228,7 +235,7 @@ actions:
       user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
       export:     { file: settings/format.js,       touched: 2026-06-20 }
       schema:     { file: docs/triggers.schema.json, touched: 2026-06-21 }
-      examples:   { file: [docs/examples/anti-slop.json, docs/examples/continuation-badges.json, docs/examples/mood-routing.json, docs/examples/narrator-mode.json, docs/examples/session-memory.json], touched: 2026-06-21 }
+      examples:   { file: [docs/examples/anti-slop.json, docs/examples/continuation-badges.json, docs/examples/mood-routing.json, docs/examples/narrator-mode.json, docs/examples/session-memory.json], touched: 2026-06-21, validated: missing }
 
   - id: compose
     name: "compose action"
@@ -239,7 +246,7 @@ actions:
       user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
       export:     { file: settings/format.js,       touched: 2026-06-20 }
       schema:     { file: docs/triggers.schema.json, touched: 2026-06-21 }
-      examples:   { file: [docs/examples/anti-slop.json, docs/examples/context-visualizer.json, docs/examples/hp-tracker.json], touched: 2026-06-21 }
+      examples:   { file: [docs/examples/anti-slop.json, docs/examples/context-visualizer.json, docs/examples/hp-tracker.json], touched: 2026-06-21, validated: missing }
 
   - id: slash-cmd
     name: "slash-cmd action"
@@ -250,7 +257,7 @@ actions:
       user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
       export:     { file: settings/format.js,       touched: 2026-06-20 }
       schema:     { file: docs/triggers.schema.json, touched: 2026-06-21 }
-      examples:   { file: [docs/examples/hp-tracker.json, docs/examples/mood-routing.json], touched: 2026-06-21 }
+      examples:   { file: [docs/examples/hp-tracker.json, docs/examples/mood-routing.json], touched: 2026-06-21, validated: missing }
 
   - id: update-lorebook
     name: "update action — lorebook target"
@@ -261,7 +268,7 @@ actions:
       user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
       export:     { file: settings/format.js,       touched: 2026-06-20 }
       schema:     { file: docs/triggers.schema.json, touched: 2026-06-21 }
-      examples:   { file: docs/examples/session-memory.json, touched: 2026-06-21 }
+      examples:   { file: docs/examples/session-memory.json, touched: 2026-06-21, validated: missing }
 
   - id: update-text
     name: "update action — text target"
@@ -276,7 +283,7 @@ actions:
       user-guide: { file: docs/user-guide.md,        touched: 2026-06-21 }
       export:     { file: settings/format.js,        touched: 2026-06-22 }
       schema:     { file: docs/triggers.schema.json,  touched: 2026-06-21 }
-      examples:   { file: docs/examples/sentinel-stop-and-strip.json, touched: 2026-06-22 }
+      examples:   { file: docs/examples/sentinel-stop-and-strip.json, touched: 2026-06-22, validated: missing }
 
   - id: image
     name: "image action — generate or load"
@@ -302,7 +309,7 @@ actions:
       user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
       export:     { file: settings/format.js,       touched: 2026-06-20 }
       schema:     { file: docs/triggers.schema.json, touched: 2026-06-21 }
-      examples:   { file: [docs/examples/hp-tracker.json, docs/examples/narrator-mode.json], touched: 2026-06-21 }
+      examples:   { file: [docs/examples/hp-tracker.json, docs/examples/narrator-mode.json], touched: 2026-06-21, validated: missing }
 
   - id: toast
     name: "toast action"
@@ -314,6 +321,17 @@ actions:
       export:     { file: settings/format.js,       touched: 2026-06-20 }
       schema:     { file: docs/triggers.schema.json, touched: missing }
       examples:   { file: missing }
+
+  - id: switch-preset
+    name: "switch-preset action"
+    notes: "fields: preset ({{var}} interpolated), var (saves previous preset name before switching); stage: postMessage; CC backend only (no-op on null PresetManager); enables revert pattern via saved prev + variable reference"
+    coverage:
+      test:       { file: tests/switch-preset.test.js, touched: 2026-06-28 }
+      syntax:     { file: docs/ruleset-syntax.md,      touched: 2026-06-28 }
+      user-guide: { file: docs/user-guide.md,          touched: 2026-06-28 }
+      export:     { file: settings/format.js,          touched: 2026-06-28 }
+      schema:     { file: docs/triggers.schema.json,   touched: missing }
+      examples:   { file: docs/ruleset-tests/trg-switch-preset-test.json, touched: 2026-06-28, validated: 2026-06-28 }
 
   - id: inject-preset
     name: "inject-preset action"
@@ -328,7 +346,7 @@ actions:
       test:       { file: tests/preset.test.js,     touched: 2026-06-20 }
       syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
       user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
-      export:     { file: settings/format.js,       touched: 2026-06-20 }
+      export:     { file: settings/format.js,       touched: 2026-06-28 }
       schema:     { file: docs/triggers.schema.json, touched: missing }
       examples:   { file: missing }
 
@@ -364,7 +382,7 @@ template-variables:
       user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
       cheatsheet: { file: settings/panel.js,        touched: 2026-06-20 }
       var-picker: { file: actions/var-legend.js,    touched: 2026-06-21 }
-      examples:   { file: [docs/examples/anti-slop.json, docs/examples/sentinel-stop-and-strip.json, docs/examples/hp-tracker.json], touched: 2026-06-21 }
+      examples:   { file: [docs/examples/anti-slop.json, docs/examples/sentinel-stop-and-strip.json, docs/examples/hp-tracker.json], touched: 2026-06-21, validated: missing }
 
   - id: history-token
     name: "{{history:N}} and filters (:user, :ai, :Name, :Glob*, :{{varName}})"
@@ -379,7 +397,7 @@ template-variables:
       user-guide: { file: docs/user-guide.md,          touched: 2026-06-21 }
       cheatsheet: { file: settings/panel.js,           touched: 2026-06-21 }
       var-picker: { file: actions/var-legend.js,       touched: 2026-06-21 }
-      examples:   { file: [docs/examples/continuation-badges.json, docs/examples/session-memory.json], touched: 2026-06-21 }
+      examples:   { file: [docs/examples/continuation-badges.json, docs/examples/session-memory.json], touched: 2026-06-21, validated: missing }
 
   - id: context-vars
     name: "{{char}}, {{user}}, {{chat_id}}, {{highlighted}}"
@@ -390,7 +408,7 @@ template-variables:
       user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
       cheatsheet: { file: settings/panel.js,        touched: 2026-06-20 }
       var-picker: { file: actions/var-legend.js,    touched: 2026-06-21 }
-      examples:   { file: docs/examples/continuation-badges.json, touched: 2026-06-21 }
+      examples:   { file: docs/examples/continuation-badges.json, touched: 2026-06-21, validated: missing }
 
   - id: lb-query
     name: "lorebook query tokens — {{lbContent}}, {{lbTitles}}, {{lbKeys}}, {{lbBooks}}"
@@ -424,7 +442,7 @@ template-variables:
       syntax:     { file: docs/ruleset-syntax.md,                       touched: 2026-06-26 }
       user-guide: { file: docs/user-guide.md,                           touched: 2026-06-26 }
       cheatsheet: { file: settings/panel.js,                            touched: 2026-06-26 }
-      examples:   { file: docs/examples/location-tracker.json,          touched: 2026-06-26 }
+      examples:   { file: [docs/ruleset-tests/trg-fuzzy-test.json, docs/examples/location-tracker.json], touched: 2026-06-26, validated: 2026-06-28 }
 
   - id: ps-queries
     name: "live prompt layer — {{psName}}, {{psContent}}, {{psRows}}"
@@ -439,7 +457,7 @@ template-variables:
       user-guide: { file: docs/user-guide.md,       touched: 2026-06-21 }
       cheatsheet: { file: settings/panel.js,        touched: 2026-06-21 }
       var-picker: { file: actions/var-legend.js,    touched: 2026-06-21 }
-      examples:   { file: docs/examples/context-visualizer.json, touched: 2026-06-21 }
+      examples:   { file: docs/examples/context-visualizer.json, touched: 2026-06-21, validated: missing }
 
   - id: ps-extended
     name: "{{psMaxNameLen}}, {{psCharSum}}, {{psRows}} sub= parameter, filter exclusions"
@@ -456,7 +474,7 @@ template-variables:
       user-guide: { file: docs/user-guide.md,       touched: 2026-06-21 }
       cheatsheet: { file: settings/panel.js,        touched: 2026-06-21 }
       var-picker: { file: missing }
-      examples:   { file: docs/examples/context-visualizer.json, touched: 2026-06-21 }
+      examples:   { file: docs/examples/context-visualizer.json, touched: 2026-06-21, validated: missing }
 
   - id: st-variables
     name: "ST variables — {{chatvar::name}}, {{globalvar::name}} with .key / [key] access"
@@ -467,18 +485,25 @@ template-variables:
       user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
       cheatsheet: { file: settings/panel.js,        touched: 2026-06-20 }
       var-picker: { file: missing }
-      examples:   { file: [docs/examples/hp-tracker.json, docs/examples/narrator-mode.json], touched: 2026-06-21 }
+      examples:   { file: [docs/examples/hp-tracker.json, docs/examples/narrator-mode.json], touched: 2026-06-21, validated: missing }
 
   - id: math
-    name: "{{math: expr}} with rand() and randint(N,M)"
-    notes: "evaluates after all variable substitution; returns empty on invalid input"
+    name: "{{math: expr}} — arithmetic, math functions, ternary, rand()/randint()"
+    notes: >
+      evaluates after all variable substitution; returns empty on invalid input;
+      operators: + - * / % ** and standard JS precedence;
+      functions: floor/ceil/round/abs/min/max/sign/clamp — injected into Function() scope,
+      stripped from expression before char-safety check so letters are never present at eval time;
+      ternary: condition ? a : b with > < >= <= == != comparisons;
+      random: rand() → float [0,1), randint(N,M) → integer [N,M] — pre-substituted as numeric
+      literals before the safety check; 2026-06-28: added math functions + ternary
     coverage:
-      test:       { file: tests/math-logic.test.js, touched: 2026-06-20 }
-      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-20 }
-      user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
-      cheatsheet: { file: settings/panel.js,        touched: 2026-06-20 }
+      test:       { file: tests/math-logic.test.js, touched: 2026-06-28 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-28 }
+      user-guide: { file: docs/user-guide.md,       touched: 2026-06-28 }
+      cheatsheet: { file: settings/panel.js,        touched: 2026-06-28 }
       var-picker: { file: missing }
-      examples:   { file: [docs/examples/hp-tracker.json, docs/examples/context-visualizer.json], touched: 2026-06-21 }
+      examples:   { file: [docs/ruleset-tests/trg-math-test.json, docs/examples/hp-tracker.json, docs/examples/context-visualizer.json], touched: 2026-06-28, validated: 2026-06-28 }
 
   - id: uuid
     name: "{{uuid}}"
@@ -500,7 +525,7 @@ template-variables:
       user-guide: { file: docs/user-guide.md,       touched: 2026-06-20 }
       cheatsheet: { file: settings/panel.js,        touched: 2026-06-20 }
       var-picker: { file: missing }
-      examples:   { file: docs/examples/context-visualizer.json, touched: 2026-06-21 }
+      examples:   { file: docs/examples/context-visualizer.json, touched: 2026-06-21, validated: missing }
 
   - id: conditionals
     name: "{{if condition}} … {{/if}} blocks"
@@ -531,7 +556,7 @@ transforms:
       syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-26 }
       user-guide: { file: docs/user-guide.md,       touched: 2026-06-26 }
       cheatsheet: { file: settings/panel.js,        touched: 2026-06-26 }
-      examples:   { file: [docs/examples/context-visualizer.json, docs/examples/continuation-badges.json], touched: 2026-06-21 }
+      examples:   { file: [docs/examples/context-visualizer.json, docs/examples/continuation-badges.json], touched: 2026-06-21, validated: missing }
 
   - id: match-transform
     name: "{{match: /pattern/flags: val}} transform"

@@ -135,11 +135,14 @@ If something doesn't match the doc, write a CC brief before continuing. Don't bu
 
 ---
 
-## Naming Convention
+## Naming Convention and Storage
 
-Test rulesets use the suffix `-test` and a short feature name:
+Test rulesets live in `docs/ruleset-tests/` and use the suffix `-test` with a short feature name:
 
 ```
+trg-math-test.json          — {{math:}} functions, ternary, rand/randint  [validated 2026-06-28]
+trg-switch-preset-test.json — switch-preset action, global var persistence  [validated 2026-06-28]
+trg-fuzzy-test.json         — {{fuzzy:}} transform, var-match fuzzy, condition fuzzy, keyword/badge fuzzy mode  [validated 2026-06-28]
 trg-chatvar-test.json       — ST variable operators
 trg-lb-test.json            — lorebook write/read
 trg-lb-empty-test.json      — lorebook empty result handling
@@ -148,7 +151,7 @@ trg-if-test.json            — {{if}} block variable forms
 trg-fuzzy-test.json         — {{fuzzy:}} transform, var-match fuzzy operator, condition fuzzy, keyword fuzzy mode
 ```
 
-Keep them. They're reusable regression tests if the engine changes.
+Keep them. They're reusable regression tests if the engine changes. When you run one and all toasts show [PASS], update its `validated` date in `traceability.yaml`.
 
 ---
 

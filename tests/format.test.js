@@ -275,6 +275,19 @@ describe('importAction', () => {
         expect(a).toBeNull();
         expect(w[0]).toContain('"stop-continue"');
     });
+    it('translates switch-preset with preset and optional var', () => {
+        const w = [];
+        const a = importAction({ type: 'switch-preset', preset: 'Fight Scene', var: '$prev' }, w);
+        expect(a?.type).toBe('switchPreset');
+        expect(a?.config).toEqual({ preset: 'Fight Scene', outputVar: '$prev' });
+        expect(w).toHaveLength(0);
+    });
+    it('switch-preset defaults outputVar to empty when var is absent', () => {
+        const w = [];
+        const a = importAction({ type: 'switch-preset', preset: 'Comfy 2' }, w);
+        expect(a?.config.outputVar).toBe('');
+        expect(w).toHaveLength(0);
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -437,6 +450,16 @@ describe('importAction — field validation', () => {
     it('stop: no required fields', () => {
         const w = [];
         expect(importAction({ type: 'stop' }, w)).not.toBeNull();
+        expect(w).toHaveLength(0);
+    });
+    it('switch-preset: missing preset → warn + null', () => {
+        const w = [];
+        expect(importAction({ type: 'switch-preset' }, w)).toBeNull();
+        expect(w[0]).toContain('"preset"');
+    });
+    it('switch-preset: present preset passes', () => {
+        const w = [];
+        expect(importAction({ type: 'switch-preset', preset: 'Comfy 2' }, w)).not.toBeNull();
         expect(w).toHaveLength(0);
     });
     it('replace (legacy format key): imports as update(text, replaceKeyword)', () => {
@@ -743,6 +766,17 @@ describe('exportAction', () => {
     it('exports stop with andContinue:false as { type: stop } with no continue field', () => {
         const out = exportAction({ type: 'stop', config: { andContinue: false } });
         expect(out).toEqual({ type: 'stop' });
+    });
+    it('exports switchPreset with type switch-preset and preset field', () => {
+        const out = exportAction({ type: 'switchPreset', config: { preset: 'Fight Scene', outputVar: '$prev' } });
+        expect(out?.type).toBe('switch-preset');
+        expect(out?.preset).toBe('Fight Scene');
+        expect(out?.var).toBe('$prev');
+    });
+    it('omits var from switch-preset export when outputVar is empty', () => {
+        const out = exportAction({ type: 'switchPreset', config: { preset: 'Comfy 2', outputVar: '' } });
+        expect(out?.type).toBe('switch-preset');
+        expect(out?.var).toBeUndefined();
     });
 });
 

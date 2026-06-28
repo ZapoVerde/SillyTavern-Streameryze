@@ -38,6 +38,7 @@ import { image }             from './image.js';
 import { setStVar }           from './set-stvar.js';
 import { toast }              from './toast.js';
 import { preset }             from './preset.js';
+import { switchPreset }       from './switch-preset.js';
 
 export const ACTION_REGISTRY = {
     stop,
@@ -49,6 +50,7 @@ export const ACTION_REGISTRY = {
     setStVar,
     toast,
     preset,
+    switchPreset,
 };
 
 /**

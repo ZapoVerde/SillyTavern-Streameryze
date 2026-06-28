@@ -89,6 +89,7 @@ const ACTION_KEY_MAP = {
     'set-var':        'setStVar',
     'toast':          'toast',
     'inject-preset':  'preset',
+    'switch-preset':  'switchPreset',
 };
 
 // Reverse maps (internal → format) derived from above
@@ -245,6 +246,7 @@ const ACTION_CFG_I = {
         confirmDestroy: r['confirm-destroy'] ?? false,
         confirmUpdate:  r['confirm-update']  ?? false,
     }),
+    switchPreset:  r => ({ preset: r.preset ?? '', outputVar: r.var ?? '' }),
 };
 
 // ---------------------------------------------------------------------------
@@ -385,6 +387,11 @@ const ACTION_CFG_E = {
         if (cfg.confirmUpdate)  out['confirm-update']  = true;
         return out;
     },
+    switchPreset: cfg => {
+        const out = { preset: cfg.preset ?? '' };
+        if (cfg.outputVar) out.var = cfg.outputVar;
+        return out;
+    },
 };
 
 // ---------------------------------------------------------------------------
@@ -457,7 +464,8 @@ const ACTION_VALIDATORS = {
         return _req(raw, 'lorebook', 'update (lorebook)', w, rn) &&
                _req(raw, 'title',    'update (lorebook)', w, rn);
     },
-    preset:    (raw, w, rn) => _req(raw, 'name', 'inject-preset', w, rn),
+    preset:        (raw, w, rn) => _req(raw, 'name',   'inject-preset', w, rn),
+    switchPreset:  (raw, w, rn) => _req(raw, 'preset', 'switch-preset', w, rn),
 };
 
 // ---------------------------------------------------------------------------

@@ -623,6 +623,20 @@ This action is the mechanism for rules that need to write ongoing context into t
 
 **Backend requirement.** ST's PromptManager only exists when Chat Completion mode is active. On other backends (KoboldAI, TextGen, etc.) this action is silently skipped. No error is raised.
 
+### Switch preset
+
+**Stage: postMessage. Requires Chat Completion backend.**
+
+Switches the active Chat Completion preset — the sampling-parameter profile selected in the CC Presets dropdown. The change takes effect on the next generation; the current turn is unaffected.
+
+**Preset** — the exact name of the preset to activate, as it appears in the dropdown. Supports `{{variables}}`, so a preset name stored earlier in the turn can be used here.
+
+**Save prev as** — before switching, saves the currently active preset name into a named variable. Use this to capture the previous preset so a later rule can revert.
+
+**Revert pattern:** a rule that fires on fight-start can save the current preset to `$prevPreset` and switch to "Fight Scene". A separate rule that fires when the fight ends switches back by reading `{{$prevPreset}}`.
+
+**Backend requirement.** The PresetManager only exists when Chat Completion mode is active. On other backends this action is silently skipped.
+
 ---
 
 ## Variables and templates
@@ -786,12 +800,22 @@ split-on: \n
 
 ### Math expressions
 
-`{{math: expr}}` evaluates arithmetic after all `{{varName}}` substitution. Two random-number functions are available inside math expressions:
+`{{math: expr}}` evaluates arithmetic after all `{{varName}}` substitution. The following functions are available:
 
 | Function | Returns |
 |---|---|
 | `rand()` | A random float in [0, 1) |
 | `randint(N, M)` | A random integer in [N, M] inclusive |
+| `floor(x)` | Round down to nearest integer |
+| `ceil(x)` | Round up to nearest integer |
+| `round(x)` | Round to nearest integer |
+| `abs(x)` | Absolute value |
+| `min(a, b)` | Smaller of two values |
+| `max(a, b)` | Larger of two values |
+| `clamp(x, lo, hi)` | Constrain x to [lo, hi] |
+| `sign(x)` | -1, 0, or 1 |
+
+Ternary expressions (`condition ? a : b`) and comparison operators (`> < >= <= == !=`) are also supported.
 
 ```
 {{math: randint(1, 20)}}                          d20 roll
@@ -799,6 +823,11 @@ split-on: \n
 {{math: randint(1, 6) + randint(1, 6) + 3}}       2d6+3
 {{math: {{chatvar::hp}} - randint(1, 8)}}         subtract a random damage roll from hp
 {{math: rand() * 100}}                            random percentage
+{{math: clamp({{chatvar::hp}} - 20, 0, 100)}}     apply damage with floor at 0
+{{math: floor({{chatvar::xp}} / 100)}}            level derived from XP
+{{math: {{chatvar::atck}} > {{chatvar::def}} ? 1 : 0}}   1 if attacker wins, else 0
+{{math: sign({{chatvar::atck}} - {{chatvar::def}}) * min(2, floor(max({{chatvar::atck}}, {{chatvar::def}}) / min({{chatvar::atck}}, {{chatvar::def}}) - 1))}}
+                                                  combat degree (-2 to 2)
 ```
 
 ---
