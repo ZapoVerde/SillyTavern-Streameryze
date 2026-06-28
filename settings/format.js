@@ -417,9 +417,10 @@ const _VALID_SCOPES       = new Set(['chat', 'global']);
 
 const TRIGGER_VALIDATORS = {
     keyword:   (raw, w, rn) => {
-        const mode = raw.mode ?? 'text';
+        const mode      = raw.mode ?? 'text';
         if (mode === 'lorebook') return true;
-        if (mode === 'regex' || raw['use-regex']) return _req(raw, 'pattern', 'keyword (regex)', w, rn);
+        const matchMode = raw['match-mode'] ?? ((raw['use-regex'] || mode === 'regex') ? 'regex' : 'keyword');
+        if (matchMode === 'regex') return _req(raw, 'pattern', 'keyword (regex)', w, rn);
         return _req(raw, 'keywords', 'keyword', w, rn);
     },
     varMatch:  (raw, w, rn) => _req(raw, 'var',        'var-match',  w, rn),

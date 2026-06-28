@@ -483,6 +483,14 @@ describe('importRule', () => {
         expect(r?.triggers).toHaveLength(1);
         expect(w).toHaveLength(1);
     });
+    it('preserves note field', () => {
+        const r = importRule({ triggers: [], actions: [], note: 'fires on weather language' }, id, []);
+        expect(r?.note).toBe('fires on weather language');
+    });
+    it('omits note when absent', () => {
+        const r = importRule({ triggers: [], actions: [] }, id, []);
+        expect(r).not.toHaveProperty('note');
+    });
 });
 
 describe('importRuleset', () => {
@@ -494,6 +502,14 @@ describe('importRuleset', () => {
         expect(rs?.name).toBe('G1');
         expect(rs?.rules).toHaveLength(1);
         expect(rs?.enabled).toBe(true);
+    });
+    it('preserves note field', () => {
+        const rs = importRuleset({ name: 'G', rules: [], note: 'weather detection group' }, id, []);
+        expect(rs?.note).toBe('weather detection group');
+    });
+    it('omits note when absent', () => {
+        const rs = importRuleset({ name: 'G', rules: [] }, id, []);
+        expect(rs).not.toHaveProperty('note');
     });
 });
 
@@ -804,6 +820,40 @@ describe('round-trip', () => {
         expect(exported.name).toBe('G1');
         expect(exported.rules[0].actions[0].var).toBe('out');
         expect(exported.rules[0].actions[0].type).toBe('call-llm');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// exportRule / exportRuleset — note field
+// ---------------------------------------------------------------------------
+
+describe('exportRule', () => {
+    it('preserves note field', () => {
+        const out = exportRule({ id: 'r1', name: 'R', note: 'intent here', triggers: [], actions: [] });
+        expect(out?.note).toBe('intent here');
+    });
+    it('omits note when absent', () => {
+        const out = exportRule({ id: 'r1', triggers: [], actions: [] });
+        expect(out).not.toHaveProperty('note');
+    });
+    it('omits note when empty string', () => {
+        const out = exportRule({ id: 'r1', note: '', triggers: [], actions: [] });
+        expect(out).not.toHaveProperty('note');
+    });
+});
+
+describe('exportRuleset', () => {
+    it('preserves note field', () => {
+        const out = exportRuleset({ id: 'rs1', name: 'G', note: 'group intent', rules: [] });
+        expect(out?.note).toBe('group intent');
+    });
+    it('omits note when absent', () => {
+        const out = exportRuleset({ id: 'rs1', name: 'G', rules: [] });
+        expect(out).not.toHaveProperty('note');
+    });
+    it('omits note when empty string', () => {
+        const out = exportRuleset({ id: 'rs1', note: '', rules: [] });
+        expect(out).not.toHaveProperty('note');
     });
 });
 

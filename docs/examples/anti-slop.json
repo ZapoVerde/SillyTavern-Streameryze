@@ -1,13 +1,35 @@
 {
+  "version": 2,
+  "type": "ruleset",
   "name": "Anti-slop",
+  "note": "Catches common AI writing clichés and rewrites the offending paragraph. Each trigger is a separate pattern so individual phrases are easy to add or remove.",
   "rules": [
     {
       "name": "Rewrite cliché",
       "triggers": [
         {
           "type": "keyword",
-          "use-regex": true,
-          "pattern": "/\\b(breath\\s+catch\\w*|catch\\w*\\s+breath|anchoring|tether|ledger|claiming|stone\\s+dropped\\s+into\\s+water|not\\s+to\\s+\\w+(\\s+\\w+){0,4}\\s+but\\s+to)\\b/i"
+          "match-mode": "regex",
+          "pattern": "\\b(?:breath\\s+catch\\w*|catch\\w*\\s+breath)\\b"
+        },
+        {
+          "type": "keyword",
+          "match-mode": "regex",
+          "pattern": "\\bstone\\s+dropped\\s+(?:\\w+\\s+){0,3}into\\s+(?:\\w+\\s+){0,3}water\\b"
+        },
+        {
+          "type": "keyword",
+          "match-mode": "regex",
+          "pattern": "\\bnot\\s+to\\s+(?:[\\w,]+\\s+){0,4}but\\s+to\\b"
+        },
+        {
+          "type": "keyword",
+          "match-mode": "regex",
+          "pattern": "\\bsingle\\s+tear(?:\\s+\\w+)?\\b"
+        },
+        {
+          "type": "keyword",
+          "keywords": "burgandy, anchor*, ledger, tether, claiming"
         }
       ],
       "actions": [
@@ -15,12 +37,34 @@
           "type": "compose",
           "var": "banned",
           "note": "Store the full list once so {{banned}} is available in the LLM prompt below.",
-          "template": "breath catch / catch breath\nanchoring\ntether\nledger\nclaiming\nstone dropped into water\nnot to... but to.."
+          "template": "breath catch / catch breath\nstone in still water (and similar)\nnot to... but to...\nsingle tear\nburgandy\nanchoring\ntether\nledger\nclaiming"
         },
         {
           "type": "call-llm",
           "output": "replace-paragraph",
           "prompt": "The paragraph contains the prohibited phrase \"{{keyword}}\".\n\nFull banned list:\n{{banned}}\n\nTask: Rewrite the immediate paragraph smoothly to completely remove \"{{keyword}}\", while strictly MAINTAINING the current tone of the story.\n\nRequirements:\n1. Aim for a minimal structural change to the paragraph.\n2. Do not use a simple, lazy word-replacement cliché (e.g., if the keyword is \"breath hitch\", do not swap it for \"breath caught\", \"gasped\", or anything involving respiration). Completely change the physical action or internal reaction to avoid lazy writing tropes entirely.\n3. Output ONLY the corrected paragraph text with no introductory remarks.\n\n{{paragraph}}"
+        }
+      ]
+    },
+    {
+      "name": "Bad names",
+      "note": "Replaces overused AI-generated character names with contextually appropriate alternatives.",
+      "triggers": [
+        {
+          "type": "keyword",
+          "keywords": "Elara, Elena, Lyra, Lira, Mira, Lily, Seraphina, Sera, Marcus, Voss",
+          "case-sensitive": true
+        }
+      ],
+      "actions": [
+        {
+          "type": "compose",
+          "var": "bad_names",
+          "template": "Elara, Elena, Lyra, Lira, Mira, Lily, Seraphina, Sera, Marcus, Voss"
+        },
+        {
+          "type": "call-llm",
+          "prompt": "Review the following story context up to the restricted name \"{{keyword}}\":\n\n---\n{{history:[10]}} {{up-to}} {{keyword}}\n---\n\nBased on the tone, setting, and existing characters in the text above, suggest a single, contextually appropriate replacement name for \"{{keyword}}\".\n\nDo not reuse common fantasy tropes or names already present in the text. Do not use any names in this list: {{bad_names}}\n\nOutput exactly ONE word: the new name itself, with no punctuation, no explanations, and no introductory text."
         }
       ]
     }
