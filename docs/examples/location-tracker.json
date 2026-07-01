@@ -78,19 +78,20 @@
         },
         {
           "type": "condition",
-          "expression": "chatvar::LT-current_loc != LT-current_loc"
+          "expression": "chatvar::LT-current_loc != {{LT-current_loc}}"
         }
       ],
       "actions": [
         {
           "type": "compose",
-          "var": "LT-changed",
-          "template": "true"
+          "var": "LT-lb_entry",
+          "template": "{{lbTitles:trg_utility:{{LT-current_loc}}:AND({{chat_id}}, location):first:inactive}}"
         },
         {
           "type": "compose",
-          "var": "LT-lb_entry",
-          "template": "{{lbTitles:trg_utility:{{LT-current_loc}}:AND({{chat_id}}, location):first:inactive}}"
+          "var": "LT-changed",
+          "template": "true{{if false}}{{LT-lb_entry}}{{/if}}",
+          "note": "The {{if false}} block is always stripped and never appears in the output — it exists only to force this action to wait on LT-lb_entry's async lorebook query (the engine sequences same-rule actions by literal {{varName}} references in their config, not by array order). Without it, this compose has no detected dependencies and races ahead of the lookup, so New-location/Known-location can wake up and fire before LT-lb_entry is actually populated."
         }
       ]
     },
@@ -242,13 +243,14 @@
         },
         {
           "type": "compose",
-          "var": "LT-changed",
-          "template": "true"
+          "var": "LT-lb_entry",
+          "template": "{{lbTitles:trg_utility:{{LT-current_loc}}:AND({{chat_id}}, location):first:inactive}}"
         },
         {
           "type": "compose",
-          "var": "LT-lb_entry",
-          "template": "{{lbTitles:trg_utility:{{LT-current_loc}}:AND({{chat_id}}, location):first:inactive}}"
+          "var": "LT-changed",
+          "template": "true{{if false}}{{LT-current_loc}}{{LT-lb_entry}}{{/if}}",
+          "note": "The {{if false}} block is always stripped and never appears in the output — it exists only to force this action to wait on LT-current_loc and LT-lb_entry (the engine sequences same-rule actions by literal {{varName}} references in their config, not by array order or output value). Without it, this compose has no detected dependencies and races ahead of the LLM extraction and the lorebook lookup, so New-location/Known-location can wake up and fire before LT-current_loc or LT-lb_entry are actually populated — producing empty /vlz-discover calls and empty lorebook titles."
         },
         {
           "type": "toast",

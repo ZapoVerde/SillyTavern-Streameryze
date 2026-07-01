@@ -646,6 +646,64 @@ describe('condition trigger — != operator', () => {
 });
 
 // ---------------------------------------------------------------------------
+// condition trigger — = and != against another variable reference (not a literal)
+// ---------------------------------------------------------------------------
+
+describe('condition trigger — variable-vs-variable = / !=', () => {
+    const cond = TRIGGER_REGISTRY.condition;
+
+    it('a bare unwrapped name on the right is never a reference — always false', async () => {
+        setTurnVar('a', 'x');
+        setTurnVar('b', 'x');
+        // Without {{...}}, "b" reads as a literal string "b", not variable b's value.
+        expect(await cond.test('', { expression: 'a != b' })).toBeNull();
+        expect(await cond.test('', { expression: 'a = b' })).toBeNull();
+    });
+
+    it('!= fires when a {{varName}}-wrapped right side differs from the left', async () => {
+        setTurnVar('a', 'x');
+        setTurnVar('b', 'y');
+        expect(await cond.test('', { expression: 'a != {{b}}' })).toBe('true');
+    });
+
+    it('!= returns null when a {{varName}}-wrapped right side equals the left', async () => {
+        setTurnVar('a', 'x');
+        setTurnVar('b', 'x');
+        expect(await cond.test('', { expression: 'a != {{b}}' })).toBeNull();
+    });
+
+    it('= fires when a {{varName}}-wrapped right side equals the left', async () => {
+        setTurnVar('a', 'x');
+        setTurnVar('b', 'x');
+        expect(await cond.test('', { expression: 'a = {{b}}' })).toBe('true');
+    });
+
+    it('compares a chatvar:: left side against a {{varName}} turn-var right side', async () => {
+        setTurnVar('current', 'The Tavern');
+        vi.mocked(getLocalVar5up).mockReturnValue('The Old Place');
+        expect(await cond.test('', { expression: 'chatvar::loc != {{current}}' })).toBe('true');
+    });
+
+    it('returns null when chatvar:: and the {{varName}} turn-var already match', async () => {
+        setTurnVar('current', 'The Tavern');
+        vi.mocked(getLocalVar5up).mockReturnValue('The Tavern');
+        expect(await cond.test('', { expression: 'chatvar::loc != {{current}}' })).toBeNull();
+    });
+
+    it('a chatvar:: reference on the right side is also resolved, not treated as a literal', async () => {
+        setTurnVar('current', 'The Tavern');
+        vi.mocked(getLocalVar5up).mockReturnValue('The Tavern');
+        expect(await cond.test('', { expression: '{{current}} = chatvar::loc' })).toBe('true');
+    });
+
+    it('is case-insensitive for variable-vs-variable comparisons', async () => {
+        setTurnVar('a', 'Happy');
+        setTurnVar('b', 'happy');
+        expect(await cond.test('', { expression: 'a = {{b}}' })).toBe('true');
+    });
+});
+
+// ---------------------------------------------------------------------------
 // condition trigger — chatvar:: with hyphenated names
 // ---------------------------------------------------------------------------
 

@@ -1,16 +1,18 @@
 /**
  * @file triggers/test-drawer.js
- * @stamp {"utc":"2026-06-21T00:00:00.000Z"}
- * @architectural-role UI — shared collapsible test-drawer widget for trigger and badge config panels
+ * @stamp {"utc":"2026-07-01T00:00:00.000Z"}
+ * @architectural-role UI — shared collapsible test-drawer widget for trigger, badge, and action config panels
  * @description
- * Renders a "▶ test" drawer that lets users paste sample text and see which parts would
- * be matched by the current trigger or badge config. Owns the DOM structure, toggle
- * animation, backdrop highlight sync, and scroll sync. Does not own match logic —
- * callers supply a resolveFn that maps (cfg, text) to a result value.
+ * Renders a "▶ test" drawer that lets users paste sample text and see either which parts
+ * would be matched (triggers/badges) or what an action's resolved output would be (actions).
+ * Owns the DOM structure, toggle animation, backdrop highlight sync, and scroll sync. Does
+ * not own match or resolution logic — callers supply a resolveFn that maps (cfg, text) to
+ * a result value.
  *
  * resolveFn(cfg, text) must return one of:
  *   { hint: string }           — config not ready (e.g. empty keywords); shown as dim status
  *   { error: string }          — config invalid (e.g. bad regex); shown as a warning
+ *   { output: string }         — resolved action result (deterministic actions' preview); shown verbatim, no backdrop marks
  *   Array<{start,end,value}>   — match spans; empty array means no match found
  *
  * @api-declaration
@@ -83,6 +85,11 @@ async function _run($el, readFn, resolveFn) {
     const result = await resolveFn(readFn(), text);
 
     if (!Array.isArray(result)) {
+        if (result.output !== undefined) {
+            $bd.html('');
+            $res.html(`<pre class="trg-test-output">${esc(result.output)}</pre>`);
+            return;
+        }
         $bd.html(esc(text));
         $res.html(result.error
             ? `<span class="trg-test-invalid">${esc(result.error)}</span>`

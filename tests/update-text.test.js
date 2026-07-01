@@ -287,3 +287,37 @@ describe('update (text) — insertMessage', () => {
         expect(ctx.stCtx.chat[1].mes).toBe('A dragon was seen.');
     });
 });
+
+// ---------------------------------------------------------------------------
+// preview() — text target
+// ---------------------------------------------------------------------------
+
+describe('update — preview (text target)', () => {
+    it('resolves the value against the given text without mutating any message', async () => {
+        const result = await update.preview(textConfig('appendToMessage', 'Note: {{message}}'), 'A dragon appeared.');
+        expect(result.output).toBe('Would appendToMessage:\nNote: A dragon appeared.');
+        expect(updateMessageBlock).not.toHaveBeenCalled();
+        expect(eventSource.emit).not.toHaveBeenCalled();
+    });
+});
+
+// ---------------------------------------------------------------------------
+// preview() — lorebook target
+// ---------------------------------------------------------------------------
+
+describe('update — preview (lorebook target)', () => {
+    it('returns a hint when lorebook or title is missing', async () => {
+        const result = await update.preview({ target: 'lorebook', lorebook: '', title: '', content: '' }, 'text');
+        expect(result.hint).toBeTruthy();
+    });
+
+    it('reports create when the entry does not exist yet, without writing the lorebook', async () => {
+        const { lbSaveLorebook } = await import('../lorebookApi.js');
+        const result = await update.preview(
+            { target: 'lorebook', lorebook: 'MyLB', title: 'Dragon Sighting', content: 'seen: {{message}}', keys: 'a, b' },
+            'A dragon appeared.',
+        );
+        expect(result.output).toBe('Would create "Dragon Sighting" in "MyLB" (keys: a, b):\nseen: A dragon appeared.');
+        expect(lbSaveLorebook).not.toHaveBeenCalled();
+    });
+});

@@ -168,3 +168,24 @@ describe('compose — reads from existing vars', () => {
         expect(ctx.vars.x).toBe('new');
     });
 });
+
+// ---------------------------------------------------------------------------
+// preview()
+// ---------------------------------------------------------------------------
+
+describe('compose — preview', () => {
+    it('returns a hint when outputVar is empty', async () => {
+        const result = await compose.preview({ outputVar: '', template: 'hello' }, 'some text');
+        expect(result.hint).toBeTruthy();
+    });
+
+    it('resolves the template against the given text without writing any vars', async () => {
+        const result = await compose.preview({ outputVar: 'tag', template: 'seen: {{message}}' }, 'A dragon appeared.');
+        expect(result.output).toBe('tag =\nseen: A dragon appeared.');
+    });
+
+    it('resolves {{keyword}} to empty since preview has no live trigger match', async () => {
+        const result = await compose.preview({ outputVar: 'tag', template: 'kw={{keyword}}' }, 'A dragon appeared.');
+        expect(result.output).toBe('tag =\nkw=');
+    });
+});

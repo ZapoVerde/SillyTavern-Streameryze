@@ -1,12 +1,14 @@
 /**
  * @file st-extensions/SillyTavern-Triggeryze/settings/rule-cards.js
- * @stamp {"utc":"2026-06-28T00:00:00.000Z"}
+ * @stamp {"utc":"2026-07-01T00:00:00.000Z"}
  * @architectural-role UI — ruleset and rule card rendering
  * @description
  * Renders the rule composer panel: ruleset group cards (collapsible, enable/disable),
  * rule cards (WHEN/DO sections, header controls), ingredient rows (trigger and action
- * config widgets), and clobber-conflict warnings. Accepts a save callback so this module
- * does not need to import profiles.js, keeping the dependency graph acyclic.
+ * config widgets), clobber-conflict warnings, and rule-lint red flags (rule-lint.js —
+ * deterministic defects, not the "may be intentional" clobber/scope notes). Accepts a
+ * save callback so this module does not need to import profiles.js, keeping the
+ * dependency graph acyclic.
  *
  * @api-declaration
  * renderRules(save) — empties and rebuilds #trg_rules_list with all ruleset cards;
@@ -25,6 +27,7 @@ import { exportRule, exportRuleset }                                       from 
 import { TRIGGER_REGISTRY }                                                from '../triggers.js';
 import { ACTION_REGISTRY, makeActionCtx }                                  from '../actions/index.js';
 import { reinjectRuleBadges }                                              from '../engine.js';
+import { lintRule }                                                        from './rule-lint.js';
 
 function randomBadgeColor() {
     const h = Math.floor(Math.random() * 360);
@@ -265,6 +268,12 @@ function renderRuleCard(rule, ruleIdx, rsRules, allRules, save, rulesetId) {
 
     const $card = $(`<div class="trg-rule-card${_expandedRules.has(rule.id) ? '' : ' trg-collapsed'}" data-rule-id="${rule.id}" data-ruleset-id="${rulesetId}">`);
 
+    // lintFlags are deterministic defects (dead condition clauses, refs to variables nothing
+    // produces, statically-empty required fields, dead-end outputs) — always wrong, unlike
+    // the clobber/scope warnings below which may be intentional. Shown at the header level
+    // (visible even collapsed) as well as spelled out in the body.
+    const lintFlags = lintRule(rule, rulesetId, getSettings().rulesets ?? []);
+
     // ── Header ──────────────────────────────────────────────────────────────
     const triggerSummary = (() => {
         const t = rule.triggers?.[0];
@@ -289,9 +298,12 @@ function renderRuleCard(rule, ruleIdx, rsRules, allRules, save, rulesetId) {
     <span class="trg-drag-handle" title="Drag to reorder">⠿</span>
     <input type="checkbox" class="trg-rule-toggle" ${rule.enabled ? 'checked' : ''} title="Enable" />
     <input type="text" class="trg-rule-name" placeholder="Rule ${ruleIdx + 1}" />
+    ${lintFlags.length ? '<i class="trg-rule-lint-flag fa-solid fa-flag"></i>' : ''}
     <span class="trg-rule-summary">${summary}</span>
     <i class="trg-rule-chevron fa-solid fa-chevron-down"></i>
 </div>`);
+    if (lintFlags.length) $hdr.find('.trg-rule-lint-flag').attr('title', lintFlags.map(f => f.message).join('\n'));
+    const lintFlagsFor = (scope, index) => lintFlags.filter(f => f.scope === scope && f.index === index);
     $hdr.find('.trg-rule-name').val(rule.name || '');
     $hdr.find('.trg-rule-toggle').on('change', function () { rule.enabled = this.checked; rebuild(); });
     $hdr.find('.trg-rule-name').on('input', function () { rule.name = this.value; save(); });
@@ -469,6 +481,14 @@ function renderRuleCard(rule, ruleIdx, rsRules, allRules, save, rulesetId) {
         $body.append($(`<div class="trg-scope-warn"><span class="trg-clobber-icon">&#9888;</span> ${names} — defined in another ruleset; add <code>$</code> prefix to share</div>`));
     }
 
+    if (lintFlags.length) {
+        const $lintErr = $('<div class="trg-lint-error">');
+        for (const f of lintFlags) {
+            $lintErr.append($('<div>').append('<span class="trg-clobber-icon">&#9888;</span> ').append(document.createTextNode(f.message)));
+        }
+        $body.append($lintErr);
+    }
+
     // ── Toolbar: WHEN/OF selector + management buttons ────────────────────────
     const $toolbar = $(`
 <div class="trg-rule-toolbar">
@@ -534,6 +554,8 @@ function renderRuleCard(rule, ruleIdx, rsRules, allRules, save, rulesetId) {
             _triggerCtx,
             `${rule.id}:t:${tidx}`
         );
+        const triggerFlags = lintFlagsFor('trigger', tidx);
+        if (triggerFlags.length) $row.addClass('trg-ingredient-lint-flagged').attr('title', triggerFlags.map(f => f.message).join('\n'));
         $triggers.append($row);
     });
     $when.append($triggers);
@@ -564,6 +586,8 @@ function renderRuleCard(rule, ruleIdx, rsRules, allRules, save, rulesetId) {
             isLast  ? null : () => { const [a] = rule.actions.splice(aidx, 1); rule.actions.splice(aidx + 1, 0, a); rebuild(); },
         );
         $row.on('focusout', '.trg-outvar-field', () => rebuild());
+        const actionFlags = lintFlagsFor('action', aidx);
+        if (actionFlags.length) $row.addClass('trg-ingredient-lint-flagged').attr('title', actionFlags.map(f => f.message).join('\n'));
         $actions.append($row);
     });
     $do.append($actions);

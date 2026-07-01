@@ -1,6 +1,6 @@
 /**
  * @file st-extensions/SillyTavern-Triggeryze/actions/preset.js
- * @stamp {"utc":"2026-06-20T00:00:00.000Z"}
+ * @stamp {"utc":"2026-07-01T00:00:00.000Z"}
  * @architectural-role Registry — preset action (PromptManager named prompt write/clear/remove)
  * @description
  * Creates or updates a named prompt entry in ST's PromptManager, enabling rules to inject
@@ -13,7 +13,9 @@
  * different slot each turn.
  *
  * @api-declaration
- * preset               — action definition object for the ACTION_REGISTRY
+ * preset               — action definition object for the ACTION_REGISTRY; preview(config, text)
+ *   resolves name/content and reports create/update/clear/remove without touching promptManager,
+ *   firing a toastr, or showing a confirm dialog
  * listTrgPresets(pm)   — returns names of all TRG-owned prompts from the given PromptManager
  * reportTrgPresets()   — fires a toastr listing active TRG presets; no-op if none exist
  *
@@ -29,6 +31,8 @@ import { promptManager }               from '../../../../../scripts/openai.js';
 import { interpolate, resolveLbTokens } from './template.js';
 import { esc }                          from './text.js';
 import { trgWarn, trgDev }             from '../logger.js';
+import { testDrawerHtml, attachTestDrawer } from '../triggers/test-drawer.js';
+import { getTurnVarsSnapshot }         from '../triggers/turn-vars.js';
 
 const TRG_PRESET_PREFIX = 'trg_preset_';
 
@@ -78,6 +82,21 @@ export function reportTrgPresets() {
 
 const MODES = ['write', 'clear', 'remove'];
 
+// Resolves name/content against the given text — shared by execute() and preview().
+// Content is only resolved for write mode since clear/remove don't use it.
+async function resolve(config, { matchedKeyword, highlighted, text, vars, messageId }) {
+    const baseVars = { keyword: matchedKeyword ?? '', message: text, char: name2 ?? '', user: name1 ?? '' };
+    const name = interpolate((config.name ?? '').trim(), baseVars, vars ?? {}).trim();
+    const mode = MODES.includes(config.mode) ? config.mode : 'write';
+
+    let content = '';
+    if (mode === 'write') {
+        const rawContent = await resolveLbTokens(config.content ?? '', matchedKeyword ?? '', highlighted, vars, messageId);
+        content = interpolate(rawContent, baseVars, vars ?? {});
+    }
+    return { name, mode, content };
+}
+
 export const preset = {
     label: 'inject preset',
     templateFields: cfg => [cfg.name, cfg.content],
@@ -90,21 +109,14 @@ export const preset = {
             return;
         }
 
-        const baseVars = {
-            keyword: matchedKeyword ?? '',
-            message: stCtx?.chat?.[messageId]?.mes ?? '',
-            char:    name2 ?? '',
-            user:    name1 ?? '',
-        };
-
-        const resolvedName = interpolate((config.name ?? '').trim(), baseVars, vars ?? {}).trim();
+        const text = stCtx?.chat?.[messageId]?.mes ?? '';
+        const { name: resolvedName, mode, content } = await resolve(config, { matchedKeyword, highlighted, text, vars, messageId });
         if (!resolvedName) {
             trgWarn('preset: name is required');
             return;
         }
 
-        const id   = presetId(resolvedName);
-        const mode = MODES.includes(config.mode) ? config.mode : 'write';
+        const id = presetId(resolvedName);
 
         if (mode === 'remove') {
             if (config.confirmDestroy && !window.confirm(`Remove preset "${resolvedName}"?`)) return;
@@ -140,14 +152,27 @@ export const preset = {
             window.toastr?.info(`Preset created: "${resolvedName}"`, 'Triggeryze');
         }
 
-        const rawContent = await resolveLbTokens(config.content ?? '', matchedKeyword ?? '', highlighted, vars, messageId);
-        const content    = interpolate(rawContent, baseVars, vars ?? {});
-
         const prompt = pm.getPromptById(id);
         if (!prompt) return;
         prompt.content = content;
         pm.saveServiceSettings();
         trgDev(debug, `  preset [${created ? 'created' : 'updated'}]: "${resolvedName}"`);
+    },
+
+    async preview(config, text) {
+        const { name, mode, content } = await resolve(config, {
+            matchedKeyword: '', highlighted: '', text, messageId: null,
+            vars: getTurnVarsSnapshot(),
+        });
+        if (!name) return { hint: 'Preset name is required.' };
+
+        const pm     = promptManager;
+        const exists = pm ? !!pm.getPromptById(presetId(name)) : false;
+        const missingNote = exists ? '' : ' (does not currently exist)';
+
+        if (mode === 'remove') return { output: `Would remove preset "${name}"${missingNote}` };
+        if (mode === 'clear')  return { output: `Would clear preset "${name}"${missingNote}` };
+        return { output: `Would ${exists ? 'update' : 'create'} preset "${name}":\n${content}` };
     },
 
     renderConfig($el, config, onChange) {
@@ -178,6 +203,7 @@ export const preset = {
             placeholder="Content — {{variables}} supported">${esc(config.content ?? '')}</textarea>
         <small class="trg-hint">Injected above chat history on the next generation. A toastr fires on first creation.</small>
     </div>
+    ${testDrawerHtml()}
 </div>`);
 
         const readConfig = () => ({
@@ -189,11 +215,13 @@ export const preset = {
             confirmDestroy: $el.find('.trg-preset-confirm-destroy').prop('checked'),
         });
 
+        const refreshTestDrawer = attachTestDrawer($el, readConfig, (cfg, text) => preset.preview(cfg, text));
         $el.find('.trg-preset-mode').on('change', function () {
             $el.find('.trg-preset-content-wrap').toggle($(this).val() === 'write');
             onChange(readConfig());
+            refreshTestDrawer();
         });
-        $el.find('.trg-preset-name, .trg-preset-content').on('input', () => onChange(readConfig()));
+        $el.find('.trg-preset-name, .trg-preset-content').on('input', () => { onChange(readConfig()); refreshTestDrawer(); });
         $el.find('.trg-preset-confirm-create, .trg-preset-confirm-update, .trg-preset-confirm-destroy').on('change', () => onChange(readConfig()));
     },
 };

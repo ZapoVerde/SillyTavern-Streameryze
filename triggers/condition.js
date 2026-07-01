@@ -36,7 +36,8 @@ export const conditionTrigger = {
     <small class="trg-hint" style="flex:1">
         Variables, <span class="trg-help-eg">chatvar::</span>/<span class="trg-help-eg">globalvar::</span> (with <span class="trg-help-eg">.key</span> or <span class="trg-help-eg">[key]</span>),
         operators: <span class="trg-help-eg">= != &lt; &gt; &lt;= &gt;= matches contains is empty in (…)</span>,
-        boolean: <span class="trg-help-eg">AND OR !</span> and <span class="trg-help-eg">( )</span>
+        boolean: <span class="trg-help-eg">AND OR !</span> and <span class="trg-help-eg">( )</span> —
+        <span class="trg-help-eg">=</span>/<span class="trg-help-eg">!=</span> right-hand side may be a literal or <span class="trg-help-eg">{{varName}}</span>/<span class="trg-help-eg">chatvar::x</span> to compare two variables
     </small>
     <span class="trg-cond-result" style="font-size:.78em;font-weight:600;padding:1px 7px;border-radius:8px;border:1px solid;opacity:.8"></span>
 </div>`);

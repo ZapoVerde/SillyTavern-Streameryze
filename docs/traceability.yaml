@@ -146,14 +146,14 @@ triggers:
 
   - id: condition
     name: "condition trigger"
-    notes: "field: expression; operators < > <= >= = != matches contains is empty not-empty in fuzzy; chatvar::/globalvar:: prefixes; fuzzy: optional threshold suffix (default 80); 2026-07-01: not-empty operator added to evalCondition (was documented but unimplemented); $-prefixed variable names added to _VNAME regex so $var is/contains/not-empty etc. now parse correctly"
+    notes: "field: expression; operators < > <= >= = != matches contains is empty not-empty in fuzzy; chatvar::/globalvar:: prefixes; fuzzy: optional threshold suffix (default 80); 2026-07-01: not-empty operator added to evalCondition (was documented but unimplemented); $-prefixed variable names added to _VNAME regex so $var is/contains/not-empty etc. now parse correctly; 2026-07-01: = and != right-hand side may now be an explicit variable reference ({{varName}}, chatvar::x, globalvar::x), not only a quoted literal, so two dynamic values can be compared directly (e.g. chatvar::loc != {{loc}}) — previously always false for any RHS that wasn't quoted, since a bare unwrapped name is still never treated as a reference (would collide with AND/OR/true/false)"
     coverage:
       test:       { file: tests/triggers.test.js,   touched: 2026-07-01 }
-      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-06-26 }
+      syntax:     { file: docs/ruleset-syntax.md,   touched: 2026-07-01 }
       user-guide: { file: docs/user-guide.md,       touched: 2026-06-26 }
       export:     { file: settings/format.js,       touched: 2026-06-20 }
       schema:     { file: docs/triggers.schema.json, touched: 2026-06-21 }
-      examples:   { file: [docs/examples/hp-tracker.json, docs/examples/narrator-mode.json], touched: 2026-06-21, validated: missing }
+      examples:   { file: [docs/examples/hp-tracker.json, docs/examples/narrator-mode.json, docs/examples/location-tracker.json], touched: 2026-07-01, validated: missing }
 
   - id: badge-top
     name: "badge trigger — top style"

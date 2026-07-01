@@ -134,3 +134,32 @@ describe('switchPreset execute — no PresetManager', () => {
         expect(trgWarn).toHaveBeenCalled();
     });
 });
+
+// ---------------------------------------------------------------------------
+// preview()
+// ---------------------------------------------------------------------------
+
+describe('switchPreset — preview', () => {
+    it('returns a hint when the resolved preset name is empty', async () => {
+        const result = await switchPreset.preview({ preset: '', outputVar: '' });
+        expect(result.hint).toBeTruthy();
+    });
+
+    it('returns an error when the preset does not exist, without switching', async () => {
+        const result = await switchPreset.preview({ preset: 'No Such Preset', outputVar: '' });
+        expect(result.error).toBeTruthy();
+        expect(pmRef.current.selectPreset).not.toHaveBeenCalled();
+    });
+
+    it('reports the switch it would make without actually switching', async () => {
+        const result = await switchPreset.preview({ preset: 'Fight Scene', outputVar: '' });
+        expect(result.output).toBe('Would switch to preset "Fight Scene"');
+        expect(pmRef.current.selectPreset).not.toHaveBeenCalled();
+    });
+
+    it('mentions the save-prev variable when outputVar is set', async () => {
+        const result = await switchPreset.preview({ preset: 'Fight Scene', outputVar: '$prev' });
+        expect(result.output).toContain('{{$prev}}');
+        expect(pmRef.current.selectPreset).not.toHaveBeenCalled();
+    });
+});

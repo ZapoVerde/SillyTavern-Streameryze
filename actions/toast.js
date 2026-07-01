@@ -1,6 +1,6 @@
 /**
  * @file st-extensions/SillyTavern-Triggeryze/actions/toast.js
- * @stamp {"utc":"2026-06-19T00:00:00.000Z"}
+ * @stamp {"utc":"2026-07-01T00:00:00.000Z"}
  * @architectural-role Registry — toast action (ST toastr notification)
  * @description
  * Pops a toastr notification with a user-configured message, level, and optional title.
@@ -8,7 +8,8 @@
  * toastr library that ST already loads; owns no notification logic of its own.
  *
  * @api-declaration
- * toast — action definition object for the ACTION_REGISTRY
+ * toast — action definition object for the ACTION_REGISTRY; preview(config, text) resolves
+ *   message/title against sample text without popping a toast
  *
  * @contract
  *   assertions:
@@ -22,8 +23,25 @@ import { interpolate, resolveLbTokens } from './template.js';
 import { esc }                       from './text.js';
 import { renderVarLegend }           from './var-legend.js';
 import { trgDev }                    from '../logger.js';
+import { testDrawerHtml, attachTestDrawer } from '../triggers/test-drawer.js';
+import { getTurnVarsSnapshot }       from '../triggers/turn-vars.js';
 
 const LEVELS = ['info', 'success', 'warning', 'error'];
+
+// Resolves message/title against the given text — shared by execute() and preview().
+async function resolve(config, { matchedKeyword, highlighted, text, vars, messageId }) {
+    const level = LEVELS.includes(config.level) ? config.level : 'info';
+    const [resolvedMsg, resolvedTitle] = await Promise.all([
+        resolveLbTokens(config.message ?? '', matchedKeyword, highlighted, vars, messageId),
+        resolveLbTokens(config.title   ?? '', matchedKeyword, highlighted, vars, messageId),
+    ]);
+    const ctx = { keyword: matchedKeyword ?? '', message: text, char: name2 ?? '', user: name1 ?? '' };
+    return {
+        level,
+        message: interpolate(resolvedMsg,   ctx, vars ?? {}),
+        title:   interpolate(resolvedTitle, ctx, vars ?? {}),
+    };
+}
 
 export const toast = {
     label: 'toast',
@@ -32,17 +50,8 @@ export const toast = {
 
     async execute(config, { matchedKeyword, messageId, stCtx, vars, debug, highlighted = '' }) {
         if (!config.message) return;
-        const text  = stCtx?.chat?.[messageId]?.mes ?? '';
-        const level = LEVELS.includes(config.level) ? config.level : 'info';
-
-        const [resolvedMsg, resolvedTitle] = await Promise.all([
-            resolveLbTokens(config.message ?? '', matchedKeyword, highlighted, vars, messageId),
-            resolveLbTokens(config.title   ?? '', matchedKeyword, highlighted, vars, messageId),
-        ]);
-
-        const ctx = { keyword: matchedKeyword ?? '', message: text, char: name2 ?? '', user: name1 ?? '' };
-        const msg   = interpolate(resolvedMsg,   ctx, vars);
-        const title = interpolate(resolvedTitle, ctx, vars);
+        const text = stCtx?.chat?.[messageId]?.mes ?? '';
+        const { level, message: msg, title } = await resolve(config, { matchedKeyword, highlighted, text, vars, messageId });
 
         trgDev(debug, `  toast [${level}]:`, msg, title || '(no title)');
 
@@ -51,6 +60,15 @@ export const toast = {
         if (config.copyOnClick)  opts.onclick = () => navigator.clipboard?.writeText?.(msg);
 
         window.toastr?.[level]?.(msg, title || undefined, Object.keys(opts).length ? opts : undefined);
+    },
+
+    async preview(config, text) {
+        if (!config.message) return { hint: 'Set a message to preview.' };
+        const { level, message, title } = await resolve(config, {
+            matchedKeyword: '', highlighted: '', text, messageId: null,
+            vars: getTurnVarsSnapshot(),
+        });
+        return { output: `Would show [${level}] toast:\n${title ? `${title}: ` : ''}${message}` };
     },
 
     renderConfig($el, config, onChange, ctx) {
@@ -76,9 +94,10 @@ export const toast = {
         <input type="checkbox" class="trg-toast-copy" ${config.copyOnClick ? 'checked' : ''} />
         click to copy message
     </label>
+    ${testDrawerHtml()}
 </div>`);
 
-        const update = () => onChange({
+        const read = () => ({
             ...config,
             level:        $el.find('.trg-toast-level').val(),
             title:        $el.find('.trg-toast-title').val(),
@@ -86,7 +105,9 @@ export const toast = {
             tapToDismiss: $el.find('.trg-toast-tap').prop('checked'),
             copyOnClick:  $el.find('.trg-toast-copy').prop('checked'),
         });
-        $el.find('.trg-toast-level, .trg-toast-title, .trg-toast-message').on('input change', update);
+        const update = () => onChange(read());
+        const refreshTestDrawer = attachTestDrawer($el, read, (cfg, text) => toast.preview(cfg, text));
+        $el.find('.trg-toast-level, .trg-toast-title, .trg-toast-message').on('input change', () => { update(); refreshTestDrawer(); });
         $el.find('.trg-toast-tap, .trg-toast-copy').on('change', update);
 
         $el.on('click', '.trg-var-inject', function () {

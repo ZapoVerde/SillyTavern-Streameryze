@@ -360,3 +360,45 @@ describe('preset — metadata', () => {
         expect(fields).toContain('X');
     });
 });
+
+// ---------------------------------------------------------------------------
+// preview()
+// ---------------------------------------------------------------------------
+
+describe('preset — preview', () => {
+    it('returns a hint when the resolved name is empty', async () => {
+        const result = await preset.preview({ name: '', content: 'x', mode: 'write' }, 'some text');
+        expect(result.hint).toBeTruthy();
+    });
+
+    it('reports create when the preset does not exist yet, without writing or toasting', async () => {
+        const result = await preset.preview({ name: 'Scene Mood', content: 'tense', mode: 'write' }, 'text');
+        expect(result.output).toBe('Would create preset "Scene Mood":\ntense');
+        expect(pmRef.current.saveServiceSettings).not.toHaveBeenCalled();
+        expect(window.toastr.info).not.toHaveBeenCalled();
+        expect(pmRef.current._prompts).toHaveLength(0);
+    });
+
+    it('reports update when the preset already exists', async () => {
+        await preset.execute({ name: 'Scene Mood', content: 'tense', mode: 'write' }, makeCtx());
+        vi.clearAllMocks();
+
+        const result = await preset.preview({ name: 'Scene Mood', content: 'calm now', mode: 'write' }, 'text');
+        expect(result.output).toBe('Would update preset "Scene Mood":\ncalm now');
+        expect(pmRef.current.saveServiceSettings).not.toHaveBeenCalled();
+    });
+
+    it('reports clear/remove without a confirm dialog or mutation', async () => {
+        await preset.execute({ name: 'Scene Mood', content: 'tense', mode: 'write' }, makeCtx());
+        vi.clearAllMocks();
+
+        const clearResult = await preset.preview({ name: 'Scene Mood', mode: 'clear' }, 'text');
+        expect(clearResult.output).toBe('Would clear preset "Scene Mood"');
+        const removeResult = await preset.preview({ name: 'Scene Mood', mode: 'remove' }, 'text');
+        expect(removeResult.output).toBe('Would remove preset "Scene Mood"');
+
+        expect(window.confirm).not.toHaveBeenCalled();
+        expect(pmRef.current.saveServiceSettings).not.toHaveBeenCalled();
+        expect(pmRef.current._prompts).toHaveLength(1);
+    });
+});

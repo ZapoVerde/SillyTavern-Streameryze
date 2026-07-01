@@ -75,11 +75,12 @@ export async function executeActions(rule, execCtx, getGenId) {
             ? { ...execCtx, stCtx: window.SillyTavern?.getContext?.(), messageId: getMessageId() }
             : execCtx;
 
+        const ruleName = rule.name ?? rule.id;
         trgLog('action', { ruleId: rule.id, type: a.type, actionIdx: idx, ...ctx });
         try {
-            await def.execute(a.config ?? {}, { ...ctx, ruleId: rule.id, actionIdx: idx, isCurrentGeneration, vars, debug });
+            await def.execute(a.config ?? {}, { ...ctx, ruleId: rule.id, ruleName, actionIdx: idx, isCurrentGeneration, vars, debug });
         } catch (err) {
-            trgError('action', a.type, 'threw', err);
+            trgError('action', a.type, 'threw', `(rule: ${ruleName})`, err);
         } finally {
             trgDev(debug, `  [${idx}] ${a.type} done | vars:`, { ...vars });
             if (a.config?.outputVar) {

@@ -140,3 +140,33 @@ describe('image — metadata', () => {
         expect(image.defaultConfig).toMatchObject({ source: 'pollinations', path: '', outputVar: '', persist: true });
     });
 });
+
+// ---------------------------------------------------------------------------
+// preview()
+// ---------------------------------------------------------------------------
+
+describe('image — preview', () => {
+    it('returns a hint when the prompt is empty (generation source)', async () => {
+        const result = await image.preview({ source: 'pollinations', prompt: '' }, 'some text');
+        expect(result.hint).toBeTruthy();
+    });
+
+    it('returns a hint when the path is empty (path source)', async () => {
+        const result = await image.preview({ source: 'path', path: '' }, 'some text');
+        expect(result.hint).toBeTruthy();
+    });
+
+    it('resolves the prompt without ever calling generateAndUpload', async () => {
+        const { generateAndUpload } = await import('../imageGen.js');
+        const result = await image.preview({ source: 'pollinations', prompt: 'a scene' }, 'A dragon appeared.');
+        expect(result.output).toBe('Would generate image from prompt:\na scene');
+        expect(generateAndUpload).not.toHaveBeenCalled();
+    });
+
+    it('resolves the path without attaching anything to the message', async () => {
+        const { config, ctx } = makeCtx({ path: 'img/dragon.png' });
+        const result = await image.preview({ ...config, source: 'path' }, 'A dragon appeared.');
+        expect(result.output).toBe('Would attach image from path:\nimg/dragon.png');
+        expect(ctx.stCtx.chat[0].extra.media).toBeUndefined();
+    });
+});

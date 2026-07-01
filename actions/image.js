@@ -1,6 +1,6 @@
 /**
  * @file st-extensions/SillyTavern-Triggeryze/actions/image.js
- * @stamp {"utc":"2026-06-22T00:00:00.000Z"}
+ * @stamp {"utc":"2026-07-01T00:00:00.000Z"}
  * @architectural-role Registry — image action (load an existing image or generate one)
  * @description
  * Dual-mode action controlled by the `source` field.
@@ -13,7 +13,10 @@
  * generation never blocks the caller.
  *
  * @api-declaration
- * image — action definition object for the ACTION_REGISTRY
+ * image — action definition object for the ACTION_REGISTRY; preview(config, text) resolves the
+ *   path or prompt field only — it never calls generateAndUpload, since a generation call is
+ *   neither free nor idempotent (the existing "Test" button remains the explicit, user-initiated
+ *   real generation preview)
  *
  * @contract
  *   assertions:
@@ -28,13 +31,33 @@ import { interpolate, resolveLbTokens, resolveHistoryTokens } from './template.j
 import { esc } from './text.js';
 import { renderVarLegend } from './var-legend.js';
 import { trgError, trgPerf } from '../logger.js';
+import { testDrawerHtml, attachTestDrawer } from '../triggers/test-drawer.js';
+import { getTurnVarsSnapshot } from '../triggers/turn-vars.js';
+
+// Resolves a path/prompt template against the given text — shared by execute() and preview().
+async function resolveField(rawTemplate, { matchedKeyword, highlighted, text, vars, messageId, chat }) {
+    const kwEsc      = (matchedKeyword ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const firstMatch = kwEsc ? new RegExp(kwEsc, 'i').exec(text) : null;
+    const upTo       = firstMatch ? text.slice(0, firstMatch.index) : '';
+    const resolved = resolveHistoryTokens(
+        await resolveLbTokens(rawTemplate ?? '', matchedKeyword, highlighted, vars, messageId),
+        chat, messageId, vars ?? {},
+    );
+    return interpolate(resolved, {
+        keyword:  matchedKeyword ?? '',
+        message:  text,
+        'up-to':  upTo,
+        char:     name2 ?? '',
+        user:     name1 ?? '',
+    }, vars ?? {});
+}
 
 export const image = {
     label: 'image',
     templateFields: cfg => (cfg?.source ?? 'pollinations') === 'path' ? [cfg?.path ?? ''] : [cfg?.prompt ?? ''],
     defaultConfig: { source: 'pollinations', model: '', comfyUiUrl: '', prompt: '{{keyword}}', path: '', outputVar: '', persist: true },
 
-    async execute(config, { matchedKeyword, messageId, stCtx, vars, isCurrentGeneration, highlighted = '' }) {
+    async execute(config, { matchedKeyword, messageId, stCtx, vars, isCurrentGeneration, highlighted = '', ruleName }) {
         const msg = stCtx?.chat?.[messageId];
         if (!msg) return;
         if (!msg.extra || typeof msg.extra !== 'object') msg.extra = {};
@@ -43,20 +66,7 @@ export const image = {
 
         // ── Path mode (load existing image) ──────────────────────────────────
         if (source === 'path') {
-            const kwEsc      = (matchedKeyword ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const firstMatch = kwEsc ? new RegExp(kwEsc, 'i').exec(msg.mes ?? '') : null;
-            const upTo       = firstMatch ? (msg.mes ?? '').slice(0, firstMatch.index) : '';
-            const resolved   = resolveHistoryTokens(
-                await resolveLbTokens(config.path ?? '', matchedKeyword, highlighted, vars, messageId),
-                stCtx?.chat, messageId, vars ?? {},
-            );
-            const path = interpolate(resolved, {
-                keyword:  matchedKeyword ?? '',
-                message:  msg.mes ?? '',
-                'up-to':  upTo,
-                char:     name2 ?? '',
-                user:     name1 ?? '',
-            }, vars ?? {});
+            const path = await resolveField(config.path, { matchedKeyword, highlighted, text: msg.mes ?? '', vars, messageId, chat: stCtx?.chat });
             if (!path.trim()) return;
 
             if (config.outputVar && vars) vars[config.outputVar] = path;
@@ -77,26 +87,13 @@ export const image = {
                 if (persist && typeof stCtx.saveChat === 'function') await stCtx.saveChat();
                 if (persist) eventSource.emit(event_types.MESSAGE_UPDATED, messageId);
             } catch (err) {
-                trgError('image (path): render/save failed', err);
+                trgError(`image (path): render/save failed (rule: ${ruleName})`, err);
             }
             return;
         }
 
         // ── Generation mode ───────────────────────────────────────────────────
-        const kwEsc          = (matchedKeyword ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const firstMatch     = kwEsc ? new RegExp(kwEsc, 'i').exec(msg.mes ?? '') : null;
-        const upTo           = firstMatch ? (msg.mes ?? '').slice(0, firstMatch.index) : '';
-        const resolvedPrompt = resolveHistoryTokens(
-            await resolveLbTokens(config.prompt ?? '', matchedKeyword, highlighted, vars, messageId),
-            stCtx?.chat, messageId, vars ?? {},
-        );
-        const prompt = interpolate(resolvedPrompt, {
-            keyword:  matchedKeyword ?? '',
-            message:  msg.mes ?? '',
-            'up-to':  upTo,
-            char:     name2 ?? '',
-            user:     name1 ?? '',
-        }, vars ?? {});
+        const prompt = await resolveField(config.prompt, { matchedKeyword, highlighted, text: msg.mes ?? '', vars, messageId, chat: stCtx?.chat });
         if (!prompt.trim()) return;
 
         // Fire-and-forget — generation can take many seconds and must not block onMessageReceived.
@@ -107,7 +104,7 @@ export const image = {
                 imagePath = await generateAndUpload(prompt, config, stCtx?.name2 ?? name2 ?? 'triggeryze');
                 trgPerf(`image | source=${source} | ${Math.round(performance.now() - tImg)}ms`);
             } catch (err) {
-                trgError('image (generate): generation failed', err);
+                trgError(`image (generate): generation failed (rule: ${ruleName})`, err);
                 window.toastr?.error(`Image generation failed: ${err.message.slice(0, 80)}`, 'Triggeryze');
                 return;
             }
@@ -129,9 +126,22 @@ export const image = {
                 if (persist && typeof stCtx.saveChat === 'function') await stCtx.saveChat();
                 if (persist) eventSource.emit(event_types.MESSAGE_UPDATED, messageId);
             } catch (err) {
-                trgError('image (generate): render/save failed', err);
+                trgError(`image (generate): render/save failed (rule: ${ruleName})`, err);
             }
         })();
+    },
+
+    async preview(config, text) {
+        const isPath = (config.source ?? 'pollinations') === 'path';
+        const raw    = isPath ? config.path : config.prompt;
+        if (!raw?.trim()) return { hint: isPath ? 'Set a path to preview.' : 'Set a prompt to preview.' };
+
+        const value = await resolveField(raw, {
+            matchedKeyword: '', highlighted: '', text, vars: getTurnVarsSnapshot(), messageId: null, chat: [],
+        });
+        return { output: isPath
+            ? `Would attach image from path:\n${value}`
+            : `Would generate image from prompt:\n${value}` };
     },
 
     renderConfig($el, config, onChange, ctx) {
@@ -194,6 +204,7 @@ export const image = {
         <button class="trg-ig-test menu_button">Test</button>
         <span class="trg-ig-test-status"></span>
     </div>
+    ${testDrawerHtml()}
 </div>`);
 
         const readConfig = () => ({
@@ -205,6 +216,8 @@ export const image = {
             prompt:     $el.find('.trg-ig-prompt').val() || '',
             persist:    $el.find('.trg-ig-persist').prop('checked'),
         });
+
+        const refreshTestDrawer = attachTestDrawer($el, readConfig, (cfg, text) => image.preview(cfg, text));
 
         const refreshGenControls = async (src, currentModel) => {
             const $modelRow = $el.find('.trg-ig-model-row');
@@ -248,12 +261,13 @@ export const image = {
             $el.find('.trg-img-gen-footer').toggle(!toPath);
             onChange(cfg);
             if (!toPath) refreshGenControls(src, cfg.model);
+            refreshTestDrawer();
         });
 
-        $el.find('.trg-img-path').on('input', () => onChange(readConfig()));
+        $el.find('.trg-img-path').on('input', () => { onChange(readConfig()); refreshTestDrawer(); });
         $el.find('.trg-ig-comfy').on('input', () => onChange(readConfig()));
         $el.find('.trg-ig-outvar').on('input', () => onChange(readConfig()));
-        $el.find('.trg-ig-prompt').on('input', () => onChange(readConfig()));
+        $el.find('.trg-ig-prompt').on('input', () => { onChange(readConfig()); refreshTestDrawer(); });
         $el.find('.trg-ig-persist').on('change', () => onChange(readConfig()));
 
         $el.on('click', '.trg-var-inject', function () {

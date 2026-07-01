@@ -138,3 +138,21 @@ describe('toast — metadata', () => {
         });
     });
 });
+
+// ---------------------------------------------------------------------------
+// preview()
+// ---------------------------------------------------------------------------
+
+describe('toast — preview', () => {
+    it('returns a hint when message is empty', async () => {
+        const result = await toast.preview({ message: '', title: '', level: 'info' }, 'some text');
+        expect(result.hint).toBeTruthy();
+    });
+
+    it('resolves message/title without popping a toast', async () => {
+        const result = await toast.preview({ message: 'body text', title: 'hdr', level: 'warning' }, 'A dragon appeared.');
+        expect(result.output).toBe('Would show [warning] toast:\nhdr: body text');
+        expect(window.toastr.warning).not.toHaveBeenCalled();
+        expect(window.toastr.info).not.toHaveBeenCalled();
+    });
+});

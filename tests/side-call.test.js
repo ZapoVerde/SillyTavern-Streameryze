@@ -207,3 +207,20 @@ describe('sideCall — replaceParagraph (once)', () => {
         expect(dispatch).toHaveBeenCalledOnce();
     });
 });
+
+// ---------------------------------------------------------------------------
+// preview()
+// ---------------------------------------------------------------------------
+
+describe('sideCall — preview', () => {
+    it('returns a hint when the prompt is empty', async () => {
+        const result = await sideCall.preview({ prompt: '', outputMode: 'replaceKeyword' }, 'some text');
+        expect(result.hint).toBeTruthy();
+    });
+
+    it('resolves the prompt against the given text without ever calling dispatch', async () => {
+        const result = await sideCall.preview({ prompt: 'Describe {{message}}', outputMode: 'replaceKeyword' }, 'A dragon appeared.');
+        expect(result.output).toBe('Would send to LLM:\nDescribe A dragon appeared.');
+        expect(dispatchMock).not.toHaveBeenCalled();
+    });
+});

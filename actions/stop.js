@@ -1,6 +1,6 @@
 /**
  * @file st-extensions/SillyTavern-Triggeryze/actions/stop.js
- * @stamp {"utc":"2026-06-16T00:00:00.000Z"}
+ * @stamp {"utc":"2026-07-01T00:00:00.000Z"}
  * @architectural-role Registry — stop stream action
  * @description
  * Stream-stage action that halts generation. When andContinue is enabled,
@@ -8,7 +8,8 @@
  * entries participate in the continued reply.
  *
  * @api-declaration
- * stop — action definition object for the ACTION_REGISTRY
+ * stop — action definition object for the ACTION_REGISTRY (execute halts generation; preview
+ *   has nothing to resolve since the action takes no template input)
  *
  * @contract
  *   assertions:
@@ -18,6 +19,7 @@
  */
 
 import { eventSource, event_types } from '../../../../../script.js';
+import { testDrawerHtml, attachTestDrawer } from '../triggers/test-drawer.js';
 
 export const stop = {
     label: 'stop',
@@ -33,6 +35,10 @@ export const stop = {
             });
         }
     },
+    // No template fields to resolve — stop takes no input, so preview is a fixed hint.
+    async preview(config) {
+        return { hint: config.andContinue ? 'Stops generation, then resumes (continue).' : 'Stops generation.' };
+    },
     renderConfig($el, config, onChange) {
         $el.html(`
 <small class="trg-hint">Halts generation. The matched text stays in the partial message.</small>
@@ -40,9 +46,11 @@ export const stop = {
     <input type="checkbox" ${config.andContinue ? 'checked' : ''} />
     continue after stop
 </label>
-<small class="trg-hint" style="margin-top:2px">When checked, resumes generation after stopping so newly triggered lorebook entries are active in the continued reply.</small>`);
+<small class="trg-hint" style="margin-top:2px">When checked, resumes generation after stopping so newly triggered lorebook entries are active in the continued reply.</small>
+${testDrawerHtml()}`);
         $el.find('input[type="checkbox"]').on('change', function () {
             onChange({ ...config, andContinue: this.checked });
         });
+        attachTestDrawer($el, () => config, (cfg) => stop.preview(cfg));
     },
 };

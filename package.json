@@ -3,7 +3,8 @@
   "type": "module",
   "scripts": {
     "test": "vitest",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "test:rulesets": "vitest run --config vitest.rulesets.config.js"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^2.1.9",

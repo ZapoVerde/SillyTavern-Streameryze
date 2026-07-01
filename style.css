@@ -20,6 +20,7 @@
 .trg-section-label   { font-size:.8em; opacity:.6; text-transform:uppercase; letter-spacing:.05em; margin-bottom:4px; display:flex; align-items:center; gap:6px; }
 .trg-ingredient-list { display:flex; flex-direction:column; gap:4px; margin-bottom:6px; }
 .trg-ingredient      { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.09); border-radius:4px; overflow:hidden; }
+.trg-ingredient-lint-flagged { border-left:3px solid #e04444; background:rgba(224,68,68,.08); }
 .trg-ingredient-hdr  { display:flex; align-items:center; gap:5px; padding:3px 5px; }
 .trg-ingredient-title{ font-size:.82em; font-weight:600; opacity:.88; flex-shrink:0; }
 .trg-ingredient-summary { flex:1; font-size:.76em; opacity:.4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-style:italic; min-width:0; padding-left:2px; }
@@ -154,6 +155,10 @@
 .trg-scope-warn      { margin-top:4px; margin-bottom:2px; padding:5px 8px; background:rgba(200,80,80,.1); border-left:3px solid rgba(200,80,80,.5); border-radius:3px; font-size:.8em; }
 .trg-clobber-warn    { margin-top:6px; padding:5px 8px; background:rgba(220,150,0,.1); border-left:3px solid rgba(220,150,0,.55); border-radius:3px; font-size:.8em; display:flex; flex-direction:column; gap:2px; }
 .trg-clobber-icon    { opacity:.75; }
+/* Rule-lint red flags — deterministic defects (rule-lint.js), distinct from the
+   "may be intentional" clobber/scope warnings above */
+.trg-rule-lint-flag  { color:#e04444; font-size:.85em; flex-shrink:0; cursor:help; }
+.trg-lint-error      { margin-top:6px; padding:5px 8px; background:rgba(224,68,68,.12); border-left:3px solid rgba(224,68,68,.6); border-radius:3px; font-size:.8em; display:flex; flex-direction:column; gap:2px; }
 /* Ruleset card */
 .trg-ruleset-card   { margin-bottom:12px; border-left:3px solid rgba(220,160,50,.45); padding-left:10px; }
 .trg-ruleset-header { display:flex; align-items:center; gap:5px; margin-bottom:4px; }
@@ -199,6 +204,7 @@
 .trg-test-invalid        { color:rgba(255,100,80,.8); }
 .trg-test-captured       { font-family:monospace; background:rgba(255,255,255,.08); border-radius:3px; padding:0 4px; }
 .trg-test-count          { opacity:.45; }
+.trg-test-output         { font-family:monospace; background:rgba(255,255,255,.06); border-radius:3px; padding:4px 6px; margin:0; white-space:pre-wrap; word-break:break-word; }
 
 /* Note drawer (README field on rules and rulesets) */
 .trg-note-drawer     { margin:2px 0 6px; }

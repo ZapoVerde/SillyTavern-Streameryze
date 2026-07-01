@@ -60,6 +60,10 @@ export default defineConfig({
                 find: /.*\/scripts\/itemized-prompts\.js$/,
                 replacement: resolve(__dirname, 'tests/__mocks__/itemized-prompts.js'),
             },
+            {
+                find: /.*\/shared\.js$/,
+                replacement: resolve(__dirname, 'tests/__mocks__/shared.js'),
+            },
         ],
     },
 });

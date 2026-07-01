@@ -1,5 +1,10 @@
 # TRG Feature Test Methodology
 
+This covers manual, in-ST verification — no repo checkout needed beyond the extension
+itself. If you're debugging a suspected timing/race bug in an *existing* ruleset, or want
+a repeatable automated regression check, see [ruleset-harness.md](ruleset-harness.md)
+instead — it drives the real engine code headlessly via Vitest.
+
 ## The Core Principle
 
 Before building any production ruleset that depends on a TRG feature, build a minimal standalone test ruleset that proves the feature works exactly as expected. This is not optional — TRG has a non-trivial engine with subtle operator semantics, and assumptions that seem obvious often turn out to be wrong or masked by bugs.

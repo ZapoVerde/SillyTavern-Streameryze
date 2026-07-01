@@ -1,6 +1,6 @@
 /**
  * @file st-extensions/SillyTavern-Triggeryze/actions/update.js
- * @stamp {"utc":"2026-06-22T00:00:00.000Z"}
+ * @stamp {"utc":"2026-07-01T00:00:00.000Z"}
  * @architectural-role Registry — update action (lorebook entry write or message text mutation)
  * @description
  * Dual-target action: writes or updates a lorebook entry (create if absent, update content
@@ -9,7 +9,9 @@
  * support {{variable}} interpolation.
  *
  * @api-declaration
- * update — action definition object for the ACTION_REGISTRY
+ * update — action definition object for the ACTION_REGISTRY; preview(config, text) resolves the
+ *   lorebook or value fields against sample text and reports create-vs-update for the lorebook
+ *   target, without writing the lorebook or mutating any message
  *
  * @contract
  *   assertions:
@@ -26,6 +28,8 @@ import { renderVarLegend } from './var-legend.js';
 import { clearWiCache, getLbNames } from '../triggers/lb-query.js';
 import { trgError, trgDev } from '../logger.js';
 import { lbGetLorebook, lbSaveLorebook } from '../lorebookApi.js';
+import { testDrawerHtml, attachTestDrawer } from '../triggers/test-drawer.js';
+import { getTurnVarsSnapshot } from '../triggers/turn-vars.js';
 
 const _MODE_HINTS = {
     replaceKeyword:   'Replaces every occurrence of the keyword in the current message.',
@@ -73,6 +77,53 @@ function makeLbEntry(uid, comment, keys, content) {
     };
 }
 
+// Resolves the lorebook target's fields against the given text — shared by execute() and preview().
+async function resolveLorebook(config, { matchedKeyword, highlighted, text, vars, messageId }) {
+    const kwEsc      = (matchedKeyword ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const firstMatch = kwEsc ? new RegExp(kwEsc, 'i').exec(text) : null;
+    const upTo       = firstMatch ? text.slice(0, firstMatch.index) : '';
+    const paragraph  = firstMatch ? extractParagraph(text, firstMatch.index).text : '';
+    const interp = (t) => interpolate(t, {
+        keyword: matchedKeyword ?? '', message: text,
+        'up-to': upTo, paragraph, char: name2 ?? '', user: name1 ?? '',
+    }, vars ?? {});
+
+    const [rLorebook, rTitle, rKeys, rContent] = await Promise.all([
+        resolveLbTokens(config.lorebook ?? '', matchedKeyword, highlighted, vars, messageId),
+        resolveLbTokens(config.title    ?? '', matchedKeyword, highlighted, vars, messageId),
+        resolveLbTokens(config.keys     ?? '', matchedKeyword, highlighted, vars, messageId),
+        resolveLbTokens(config.content  ?? '', matchedKeyword, highlighted, vars, messageId),
+    ]);
+
+    return {
+        lorebook: interp(rLorebook).trim(),
+        title:    interp(rTitle).trim(),
+        keys:     interp(rKeys).split(',').map(k => k.trim()).filter(Boolean),
+        content:  interp(rContent),
+    };
+}
+
+// Resolves the text target's value against the given text — shared by execute() and preview().
+async function resolveText(config, { matchedKeyword, highlighted, text, vars, messageId }) {
+    const kwEsc      = (matchedKeyword ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const mkRe       = () => new RegExp(kwEsc, 'gi');
+    const firstMatch = kwEsc ? mkRe().exec(text) : null;
+    const upTo       = firstMatch ? text.slice(0, firstMatch.index) : '';
+    const paragraph  = firstMatch ? extractParagraph(text, firstMatch.index).text : '';
+
+    const resolvedValue = await resolveLbTokens(config.value ?? '', matchedKeyword, highlighted, vars, messageId);
+    const value = interpolate(resolvedValue, {
+        keyword:   matchedKeyword ?? '',
+        message:   text,
+        'up-to':   upTo,
+        paragraph,
+        char:      name2 ?? '',
+        user:      name1 ?? '',
+    }, vars ?? {});
+
+    return { mode: config.mode ?? 'replaceKeyword', value, mkRe };
+}
+
 export const update = {
     label: 'update',
     templateFields: cfg => cfg?.target === 'text'
@@ -80,36 +131,16 @@ export const update = {
         : [cfg?.lorebook, cfg?.title, cfg?.keys, cfg?.content],
     defaultConfig: { target: 'lorebook', lorebook: '', title: '', keys: '', content: '', outputVar: '', mode: 'replaceKeyword', value: '' },
 
-    async execute(config, { matchedKeyword, messageId, stCtx, vars, debug, highlighted = '', isCurrentGeneration }) {
+    async execute(config, { matchedKeyword, messageId, stCtx, vars, debug, highlighted = '', isCurrentGeneration, ruleName }) {
         const target = config.target ?? 'lorebook';
 
         // ── Lorebook target ───────────────────────────────────────────────
         if (target === 'lorebook') {
-            const msg  = stCtx?.chat?.[messageId];
-            const text = msg?.mes ?? '';
-            const kwEsc      = (matchedKeyword ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const firstMatch = kwEsc ? new RegExp(kwEsc, 'i').exec(text) : null;
-            const upTo       = firstMatch ? text.slice(0, firstMatch.index) : '';
-            const paragraph  = firstMatch ? extractParagraph(text, firstMatch.index).text : '';
-            const interp = (t) => interpolate(t, {
-                keyword: matchedKeyword ?? '', message: text,
-                'up-to': upTo, paragraph, char: name2 ?? '', user: name1 ?? '',
-            }, vars);
-
-            const [rLorebook, rTitle, rKeys, rContent] = await Promise.all([
-                resolveLbTokens(config.lorebook ?? '', matchedKeyword, highlighted, vars, messageId),
-                resolveLbTokens(config.title    ?? '', matchedKeyword, highlighted, vars, messageId),
-                resolveLbTokens(config.keys     ?? '', matchedKeyword, highlighted, vars, messageId),
-                resolveLbTokens(config.content  ?? '', matchedKeyword, highlighted, vars, messageId),
-            ]);
-
-            const lorebook = interp(rLorebook).trim();
-            const title    = interp(rTitle).trim();
-            const keys     = interp(rKeys).split(',').map(k => k.trim()).filter(Boolean);
-            const content  = interp(rContent);
+            const text = stCtx?.chat?.[messageId]?.mes ?? '';
+            const { lorebook, title, keys, content } = await resolveLorebook(config, { matchedKeyword, highlighted, text, vars, messageId });
 
             if (!lorebook || !title) {
-                trgError('update (lorebook): lorebook and title are required');
+                trgError(`update (lorebook): lorebook and title are required (rule: ${ruleName})`);
                 return;
             }
 
@@ -147,48 +178,51 @@ export const update = {
         const msg = stCtx?.chat?.[messageId];
         if (!msg) return;
 
-        const kwEsc      = (matchedKeyword ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const mkRe       = () => new RegExp(kwEsc, 'gi');
-        const firstMatch = kwEsc ? mkRe().exec(msg.mes) : null;
-        const upTo       = firstMatch ? msg.mes.slice(0, firstMatch.index) : '';
-        const paragraph  = firstMatch ? extractParagraph(msg.mes, firstMatch.index).text : '';
-
-        const resolvedValue = await resolveLbTokens(config.value ?? '', matchedKeyword, highlighted, vars, messageId);
-        const value = interpolate(resolvedValue, {
-            keyword:   matchedKeyword ?? '',
-            message:   msg.mes,
-            'up-to':   upTo,
-            paragraph,
-            char:      name2 ?? '',
-            user:      name1 ?? '',
-        }, vars ?? {});
-
+        const { mode, value, mkRe } = await resolveText(config, { matchedKeyword, highlighted, text: msg.mes, vars, messageId });
         const save = makeSave(isCurrentGeneration, messageId, msg, stCtx);
-        const mode = config.mode ?? 'replaceKeyword';
 
         if (mode === 'replaceKeyword') {
             const updated = applyReplaceKeyword(msg.mes, mkRe, value);
             if (updated === msg.mes) return;
             msg.mes = updated;
-            try { await save(); } catch (err) { trgError('update text replaceKeyword: save failed', err); }
+            try { await save(); } catch (err) { trgError(`update text replaceKeyword: save failed (rule: ${ruleName})`, err); }
         } else if (mode === 'replaceParagraph') {
             const built = applyReplaceParagraph(msg.mes, mkRe, value);
             if (built === null) return;
             msg.mes = built;
-            try { await save(); } catch (err) { trgError('update text replaceParagraph: save failed', err); }
+            try { await save(); } catch (err) { trgError(`update text replaceParagraph: save failed (rule: ${ruleName})`, err); }
         } else if (mode === 'prependToMessage') {
             msg.mes = applyPrepend(msg.mes, value);
-            try { await save(); } catch (err) { trgError('update text prependToMessage: save failed', err); }
+            try { await save(); } catch (err) { trgError(`update text prependToMessage: save failed (rule: ${ruleName})`, err); }
         } else if (mode === 'appendToMessage') {
             msg.mes = applyAppend(msg.mes, value);
-            try { await save(); } catch (err) { trgError('update text appendToMessage: save failed', err); }
+            try { await save(); } catch (err) { trgError(`update text appendToMessage: save failed (rule: ${ruleName})`, err); }
         } else if (mode === 'replaceMessage') {
             msg.mes = applyReplaceMessage(msg.mes, value);
-            try { await save(); } catch (err) { trgError('update text replaceMessage: save failed', err); }
+            try { await save(); } catch (err) { trgError(`update text replaceMessage: save failed (rule: ${ruleName})`, err); }
         } else if (mode === 'insertMessage') {
             try { await applyInsertMessage(stCtx, messageId, value, name2 ?? ''); }
-            catch (err) { trgError('update text insertMessage: failed', err); }
+            catch (err) { trgError(`update text insertMessage: failed (rule: ${ruleName})`, err); }
         }
+    },
+
+    async preview(config, text) {
+        const target = config.target ?? 'lorebook';
+        const previewCtx = { matchedKeyword: '', highlighted: '', text, vars: getTurnVarsSnapshot(), messageId: null };
+
+        if (target === 'lorebook') {
+            const { lorebook, title, keys, content } = await resolveLorebook(config, previewCtx);
+            if (!lorebook || !title) return { hint: 'Lorebook and title are required.' };
+
+            const lbData  = await lbGetLorebook(lorebook).catch(() => null);
+            const entries = lbData?.entries ?? {};
+            const exists  = Object.values(entries).some(e => (e.comment ?? '').toLowerCase() === title.toLowerCase());
+            const keysNote = keys.length ? ` (keys: ${keys.join(', ')})` : '';
+            return { output: `Would ${exists ? 'update' : 'create'} "${title}" in "${lorebook}"${keysNote}:\n${content}` };
+        }
+
+        const { mode, value } = await resolveText(config, previewCtx);
+        return { output: `Would ${mode}:\n${value}` };
     },
 
     renderConfig($el, config, onChange, ctx) {
@@ -246,6 +280,7 @@ export const update = {
         <textarea class="text_pole trg-cfg trg-up-value" rows="3"
             placeholder="Value — {{keyword}} {{highlighted}} {{paragraph}} {{message}} {{myVar}}">${esc(config.value ?? '')}</textarea>
     </div>
+    ${testDrawerHtml()}
 </div>`);
 
         const readConfig = () => ({
@@ -259,22 +294,25 @@ export const update = {
             value:     $el.find('.trg-up-value').val(),
         });
 
+        const refreshTestDrawer = attachTestDrawer($el, readConfig, (cfg, text) => update.preview(cfg, text));
+
         $el.find('.trg-up-target').on('change', function () {
             const t = $(this).val();
             $el.find('.trg-up-lorebook-fields').toggle(t === 'lorebook');
             $el.find('.trg-up-text-fields').toggle(t === 'text');
             onChange(readConfig());
+            refreshTestDrawer();
         });
 
-        $el.find('.trg-up-lorebook, .trg-up-title, .trg-up-keys, .trg-up-content, .trg-up-outvar').on('input', () => onChange(readConfig()));
+        $el.find('.trg-up-lorebook, .trg-up-title, .trg-up-keys, .trg-up-content, .trg-up-outvar').on('input', () => { onChange(readConfig()); refreshTestDrawer(); });
         const $modeHint = $el.find('.trg-up-mode-hint');
         const updateModeHint = mode => {
             const text = _MODE_HINTS[mode] ?? '';
             $modeHint.text(text).toggle(!!text);
         };
         updateModeHint(config.mode ?? 'replaceKeyword');
-        $el.find('.trg-up-mode').on('change', function () { updateModeHint($(this).val()); onChange(readConfig()); });
-        $el.find('.trg-up-value').on('input', () => onChange(readConfig()));
+        $el.find('.trg-up-mode').on('change', function () { updateModeHint($(this).val()); onChange(readConfig()); refreshTestDrawer(); });
+        $el.find('.trg-up-value').on('input', () => { onChange(readConfig()); refreshTestDrawer(); });
 
         $el.on('click', '.trg-var-inject', function () {
             const token = $(this).data('token');

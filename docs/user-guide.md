@@ -247,6 +247,18 @@ Each rule header exposes a row of controls:
 
 The clone button creates an independent copy with a fresh ID. The copy's name gets " (copy)" appended. It behaves identically to any manually created rule and can be edited, moved, or deleted without affecting the original.
 
+### Red flags — deterministic defects
+
+A red flag (🚩) next to a rule's name means at least one part of that rule is guaranteed to misbehave, no matter what your variables contain at runtime — not a maybe-intentional style note like the amber clobber/scope warnings below, but something proven broken by inspecting the rule itself. Hover the flag for the specific reason(s). The affected trigger or action row is also outlined in red, and expanding the rule shows the full explanation at the bottom.
+
+Four things get flagged this way:
+- A **condition** trigger with a clause no operator can ever match (e.g. comparing two variables without wrapping one in `{{...}}`).
+- A **reference** (in a template, a variable-match trigger, or a condition) to a variable name nothing in scope ever sets — usually a typo, or a missing `$` prefix for a variable meant to be shared globally.
+- A **required field** (a lorebook action's `lorebook`/`title`, a call-LLM's `prompt`, a slash command's `command`, and so on) that's a static empty string with no `{{...}}` template at all — it will always fail or silently do nothing.
+- An **output variable** that's set but never read anywhere else in scope — the action did work that has no effect.
+
+This check is static — it runs on every rule render (so on load, on edit, and after importing a ruleset), and it only catches things that are *always* wrong. It can't catch a bug that only shows up depending on timing (two actions racing to set variables another rule reads) — that class of bug needs the developer-facing harness in `docs/ruleset-harness.md` instead.
+
 ---
 
 ## Triggers

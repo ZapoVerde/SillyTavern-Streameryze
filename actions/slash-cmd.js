@@ -1,6 +1,6 @@
 /**
  * @file st-extensions/SillyTavern-Triggeryze/actions/slash-cmd.js
- * @stamp {"utc":"2026-06-15T00:00:00.000Z"}
+ * @stamp {"utc":"2026-07-01T00:00:00.000Z"}
  * @architectural-role Registry — slashCmd action (ST slash command execution)
  * @description
  * Executes one or more ST slash commands with {{variable}} interpolation.
@@ -9,7 +9,9 @@
  * to restrict to after the message is received.
  *
  * @api-declaration
- * slashCmd — action definition object for the ACTION_REGISTRY
+ * slashCmd — action definition object for the ACTION_REGISTRY; preview(config, text) resolves
+ *   the command string only — it is never executed by preview, since slash commands can have
+ *   arbitrary side effects
  *
  * @contract
  *   assertions:
@@ -23,6 +25,27 @@ import { interpolate, resolveLbTokens } from './template.js';
 import { esc, extractParagraph } from './text.js';
 import { renderVarLegend } from './var-legend.js';
 import { trgDev } from '../logger.js';
+import { testDrawerHtml, attachTestDrawer } from '../triggers/test-drawer.js';
+import { getTurnVarsSnapshot } from '../triggers/turn-vars.js';
+
+// Resolves the command string against the given text — shared by execute() and preview().
+// preview() stops here; it never calls executeSlashCommandsWithOptions.
+async function resolve(config, { matchedKeyword, highlighted, text, vars, messageId }) {
+    const kwEsc      = (matchedKeyword ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const firstMatch = kwEsc ? new RegExp(kwEsc, 'i').exec(text) : null;
+    const upTo       = firstMatch ? text.slice(0, firstMatch.index) : '';
+    const paragraph  = firstMatch ? extractParagraph(text, firstMatch.index).text : '';
+
+    const resolvedCmd = await resolveLbTokens(config.command ?? '', matchedKeyword, highlighted, vars, messageId);
+    return interpolate(resolvedCmd, {
+        keyword:   matchedKeyword ?? '',
+        message:   text,
+        'up-to':   upTo,
+        paragraph,
+        char:      name2 ?? '',
+        user:      name1 ?? '',
+    }, vars ?? {});
+}
 
 export const slashCmd = {
     label: 'slash commands',
@@ -30,22 +53,9 @@ export const slashCmd = {
     defaultConfig: { command: '', outputVar: '' },
 
     async execute(config, { matchedKeyword, messageId, stCtx, vars, debug, highlighted = '' }) {
-        const chatIdx    = messageId ?? ((stCtx?.chat?.length ?? 1) - 1);
-        const text       = stCtx?.chat?.[chatIdx]?.mes ?? '';
-        const kwEsc      = (matchedKeyword ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const firstMatch = kwEsc ? new RegExp(kwEsc, 'i').exec(text) : null;
-        const upTo       = firstMatch ? text.slice(0, firstMatch.index) : '';
-        const paragraph  = firstMatch ? extractParagraph(text, firstMatch.index).text : '';
-
-        const resolvedCmd = await resolveLbTokens(config.command ?? '', matchedKeyword, highlighted, vars, messageId);
-        const cmd = interpolate(resolvedCmd, {
-            keyword:   matchedKeyword ?? '',
-            message:   text,
-            'up-to':   upTo,
-            paragraph,
-            char:      name2 ?? '',
-            user:      name1 ?? '',
-        }, vars);
+        const chatIdx = messageId ?? ((stCtx?.chat?.length ?? 1) - 1);
+        const text    = stCtx?.chat?.[chatIdx]?.mes ?? '';
+        const cmd     = await resolve(config, { matchedKeyword, highlighted, text, vars, messageId });
 
         trgDev(debug, `  slashCmd:`, cmd);
 
@@ -56,6 +66,15 @@ export const slashCmd = {
         if (config.outputVar && vars && result?.pipe != null) {
             vars[config.outputVar] = result.pipe;
         }
+    },
+
+    async preview(config, text) {
+        if (!config.command) return { hint: 'Set a command to preview.' };
+        const cmd = await resolve(config, {
+            matchedKeyword: '', highlighted: '', text, messageId: null,
+            vars: getTurnVarsSnapshot(),
+        });
+        return { output: `Would run:\n${cmd}` };
     },
 
     renderConfig($el, config, onChange, ctx) {
@@ -69,6 +88,7 @@ export const slashCmd = {
     ${renderVarLegend(ctx?.priorActions, ctx?.crossRuleVars, ctx?.globalVars)}
     <textarea class="text_pole trg-cfg trg-slashcmd-cmd" rows="4"
         placeholder="/setvar key=mood value=&quot;{{keyword}}&quot;&#10;/trigger id=myQR">${esc(config.command ?? '')}</textarea>
+    ${testDrawerHtml()}
 </div>`);
 
         $el.on('click', '.trg-var-inject', function () {
@@ -83,11 +103,13 @@ export const slashCmd = {
             el.focus();
         });
 
-        const update = () => onChange({
+        const read = () => ({
             ...config,
             outputVar: $el.find('.trg-slashcmd-outvar').val().trim(),
             command:   $el.find('.trg-slashcmd-cmd').val(),
         });
-        $el.find('.trg-slashcmd-outvar, .trg-slashcmd-cmd').on('input', update);
+        const update = () => onChange(read());
+        const refreshTestDrawer = attachTestDrawer($el, read, (cfg, text) => slashCmd.preview(cfg, text));
+        $el.find('.trg-slashcmd-outvar, .trg-slashcmd-cmd').on('input', () => { update(); refreshTestDrawer(); });
     },
 };

@@ -264,3 +264,27 @@ describe('global variable', () => {
         expect(interpolate('{{globalvar::x}}', {})).toBe('global');
     });
 });
+
+// ---------------------------------------------------------------------------
+// preview()
+// ---------------------------------------------------------------------------
+
+describe('setStVar — preview', () => {
+    it('returns a hint when varName is empty', async () => {
+        const result = await setStVar.preview({ scope: 'chat', varName: '', key: '', value: 'x' }, 'some text');
+        expect(result.hint).toBeTruthy();
+    });
+
+    it('resolves the value against the given text without writing to either store', async () => {
+        const result = await setStVar.preview({ scope: 'chat', varName: 'hp', key: '', value: '{{message}}' }, 'A dragon appeared.');
+        expect(result.output).toBe('Would set chat var hp =\nA dragon appeared.');
+        expect(localStore.size).toBe(0);
+        expect(globalStore.size).toBe(0);
+    });
+
+    it('includes the key in the preview label when set', async () => {
+        const result = await setStVar.preview({ scope: 'global', varName: 'config', key: 'volume', value: '75' }, 'text');
+        expect(result.output).toBe('Would set global var config[volume] =\n75');
+        expect(globalStore.size).toBe(0);
+    });
+});

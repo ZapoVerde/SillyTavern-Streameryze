@@ -306,3 +306,19 @@ describe('slashCmd — debug logging', () => {
         expect(logSpy).toHaveBeenCalledTimes(1);
     });
 });
+
+// ---------------------------------------------------------------------------
+// preview()
+// ---------------------------------------------------------------------------
+
+describe('slashCmd — preview', () => {
+    it('returns a hint when command is empty', async () => {
+        const result = await slashCmd.preview({ command: '', outputVar: '' }, 'some text');
+        expect(result.hint).toBeTruthy();
+    });
+
+    it('resolves the command against the given text without running it — preview takes no stCtx, so there is nothing it could execute against', async () => {
+        const result = await slashCmd.preview({ command: '/echo {{message}}', outputVar: '' }, 'A dragon appeared.');
+        expect(result.output).toBe('Would run:\n/echo A dragon appeared.');
+    });
+});
