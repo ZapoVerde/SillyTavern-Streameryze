@@ -23,6 +23,7 @@ import { reinjectAllBadges, removeAllBadges }                               from
 import { getSettings, makeId }                                              from './storage.js';
 import { refreshProfileDropdown, bindProfileHandlers, updateProfileDirtyIndicator } from './profiles.js';
 import { renderRules, expandOnCreate }                                      from './rule-cards.js';
+import { rebuildRegistry }                                                  from '../engine.js';
 
 export async function addSettingsPanel() {
     $('#extensions_settings2').append(`
@@ -337,7 +338,7 @@ export async function addSettingsPanel() {
 </div>`);
 
     const s    = getSettings();
-    const save = () => { saveSettingsDebounced(); updateProfileDirtyIndicator(); };
+    const save = () => { saveSettingsDebounced(); updateProfileDirtyIndicator(); rebuildRegistry(); };
 
     $('#trg_enabled').prop('checked', s.enabled);
     $('#trg_verbose').prop('checked', s.verbose);
